@@ -29,3 +29,7 @@ def get_ukb_pheno_mt_path(data_type: str, sex: str = 'full', tranche: str = CURR
     return f'gs://ukbb-pharma-exome-analysis/{tranche}/{TRANCHE_DATA[tranche]}/phenotype/{sex}/{data_type}.mt'
 
 
+def get_ukb_covariates_ht_path():
+    return f'gs://ukbb-pharma-exome-analysis/misc_files/covariates.ht'
+
+
