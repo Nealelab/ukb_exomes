@@ -18,7 +18,8 @@ ukb_for_grm_plink_path = f'{bucket}/mt/ukb.for_grm.pruned.plink'
 pheno_path = 'gs://phenotype_pharma/PHESANT_output/100k/January_2019/phesant_output_combined_both_sexes_no_sex_specific.tsv'
 
 HAIL_DOCKER_IMAGE = 'konradjk/hail_utils:latest'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.3'
+# SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.3'
+SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.35.8.2.2'
 
 
 def create_sparse_grm(p: Pipeline, output_path: str, plink_file_root: str,
@@ -49,31 +50,34 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
         groups = {'pLoF', 'missense|LC', 'pLoF|missense|LC', 'synonymous'}
     extract_task: pipeline.pipeline.Task = p.new_task(name='extract_vcf')
     extract_task.image(HAIL_DOCKER_IMAGE)
-    extract_task.declare_resource_group(vcf={'vcf.gz': f'{{root}}.vcf.bgz',
-                                             'vcf.gz.tbi': f'{{root}}.vcf.bgz.tbi'})
+    extract_task.declare_resource_group(vcf={'vcf.gz': f'{{root}}.vcf.gz',
+                                             'vcf.gz.tbi': f'{{root}}.vcf.gz.tbi'})
     python_command = f"""import hail as hl
 gene_ht = hl.read_table('{gene_map_ht_path}')"""
     if gene is not None:
         python_command += f"""
 gene_ht = gene_ht.filter(gene_ht.gene_symbol == '{gene}')
-interval = gene_ht.aggregate(hl.agg.take(gene_ht.interval, 1), _localize=False)
-gene_ht = gene_ht.filter(hl.set({{'{"', '".join(groups)}'}}).contains(gene_ht.annotation)).key_by()
-gene_ht.select(group=gene_ht.gene_id + '_' + gene_ht.gene_symbol + '_' + gene_ht.annotation, variant=hl.delimit(gene_ht.variants, '"\\\\t"')).export('{extract_task.group_file}', header=False)"""
+interval = gene_ht.aggregate(hl.agg.take(gene_ht.interval, 1), _localize=False)[0]"""
     elif interval is not None:
-        # TODO: implement interval version to get genes by intervals
         python_command += f"""
-interval = [hl.parse_locus_interval('{interval}', 'GRCh38')]
-gene_ht.filter(interval.contains(gene_ht.interval.start))"""
+interval = hl.parse_locus_interval('{interval}', 'GRCh38')
+gene_ht = gene_ht.filter(interval.contains(gene_ht.interval.start))"""
     python_command += (f"""
-mt = hl.read_matrix_table('{mt_path}')
+gene_ht = gene_ht.filter(hl.set({{'{"', '".join(groups)}'}}).contains(gene_ht.annotation)).key_by()
+gene_ht.select(group=gene_ht.gene_id + '_' + gene_ht.gene_symbol + '_' + gene_ht.annotation, variant=hl.delimit(gene_ht.variants, '"\\\\t"')).export('{extract_task.group_file}', header=False)
+mt = hl.read_matrix_table('{mt_path}').select_entries('GT')
+ht = hl.read_table('gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht')
+ht = ht.filter(~ht.is_filtered & (ht.hybrid_pop == '12'))
+mt = mt.filter_cols(hl.is_defined(ht[mt.col_key]))
 mapping = hl.import_table('{sample_mapping_file}', key='eid_sample', delimiter=',')
 mt = mt.annotate_cols(exome_id=mapping[mt.s.split('_')[1]].eid_26041)
 mt = mt.filter_cols(hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
-mt = hl.filter_intervals(mt, interval)
-hl.export_vcf(mt, '{extract_task.vcf["vcf.gz"]}')""")
+mt = hl.filter_intervals(mt.annotate_rows(rsid=mt.locus.contig + ':' + hl.str(mt.locus.position) + '_' + mt.alleles[0] + '/' + mt.alleles[1]), [interval])
+hl.export_vcf(mt, '{extract_task.bgz}.bgz')""")
     python_command = python_command.replace('\n', '; ').strip()
     command = (f"""
 python3 -c "{python_command}";
+mv {extract_task.bgz}.bgz {extract_task.vcf["vcf.gz"]};
 tabix {extract_task.vcf["vcf.gz"]};
     """)
     extract_task.command(command.replace('\n', ' '))
@@ -89,7 +93,7 @@ def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: st
 
     pheno_file = p.read_input(pheno_path)
     in_bfile = p.read_input_group(**{ext: f'{plink_file_root}.{ext}' for ext in ('bed', 'bim', 'fam')})
-    fit_null_task = p.new_task(name=f'fit_null_model_{analysis_type}')
+    fit_null_task = p.new_task(name=f'fit_null_model_{analysis_type}').cpu(n_threads).storage('1500Mi')
     output_files = {ext: f'{{root}}{ext if ext.startswith("_") else "." + ext}' for ext in
                    ('rda', '_30markers.SAIGE.results.txt', f'{analysis_type}.varianceRatio.txt')}
     if analysis_type == 'gene':
@@ -132,7 +136,8 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     analysis_type = "gene" if sparse_sigma_file is not None else "variant"
     samples_file = p.read_input(samples_file_path)
 
-    run_saige_task: pipeline.pipeline.Task = p.new_task(name=f'run_saige_{analysis_type}')
+    # Step 2 is single-threaded only
+    run_saige_task: pipeline.pipeline.Task = p.new_task(name=f'run_saige_{analysis_type}').cpu(1)
     if dependency is not None:
         run_saige_task.depends_on(dependency)
 
@@ -156,12 +161,12 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     run_saige_task.command(command)
     p.write_output(run_saige_task.result, f'{output_root}.txt')
     p.write_output(run_saige_task.stdout, f'{output_root}.log')
-    # Runtimes: chr1: 22 minutes
+    # Runtimes: PCSK9 (4 groups, 31v, 289v, 320v, 116v): 22 minutes
 
 
 def main(args):
     trait_type = 'quantitative'
-    pheno_name = 'X50_irnt'
+    phenos = ('X50_irnt', 'X49_irnt',)
     covariates = 'X46_irnt'
     relatedness_cutoff = '0.125'
     num_markers = 2000
@@ -170,75 +175,113 @@ def main(args):
     sparse_grm_root = f'{root}/tmp/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
 
-    gene = 'PCSK9'
-    vcf_root = f'{root}/tmp/test'
-
-    null_glmm_root = f'{root}/tmp/test'
-    model_file_path = f'{null_glmm_root}.rda'
-    variant_variance_ratio_file_path = f'{null_glmm_root}.variant.varianceRatio.txt'
-    gene_variance_ratio_file_path = f'{null_glmm_root}.gene.varianceRatio.txt'
-    results_path = f'{root}/tmp/result.txt'
-
-    sparse_sigma_file_path = f'{gene_variance_ratio_file_path}{sparse_grm_extension.replace("GRM", "Sigma")}'
-
-    model_created = True  # hl.hadoop_exists(model_file_path) and not args.overwrite
-    variant_var_ratio_created = True  # hl.hadoop_exists(variant_variance_ratio_file_path) and not args.overwrite
-    gene_var_ratio_created = False  # hl.hadoop_exists(gene_variance_ratio_file_path) and not args.overwrite
-    sparse_sigma_created = False  # hl.hadoop_exists(sparse_sigma_file_path) and not args.overwrite
-    vcf_created = False  # hl.hadoop_exists(f'{vcf_root}.vcf.gz') and not args.overwrite
-
     # backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/privateKeyData')
     backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
-    p = Pipeline(default_image=SAIGE_DOCKER_IMAGE, default_storage='90Gi', backend=backend, default_cpu=n_threads)
+    p = Pipeline(default_image=SAIGE_DOCKER_IMAGE, default_storage='500Mi', backend=backend, default_cpu=n_threads)
 
-    if args.create_sparse_grm:
-        sparse_grm = create_sparse_grm(p, sparse_grm_root, ukb_for_grm_plink_path,
-                                       relatedness_cutoff, num_markers, n_threads=n_threads)
-    else:
-        sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
-                                           (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
-
-    if args.variant_test:
-        if not (model_created and variant_var_ratio_created):
-            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno_name, trait_type, covariates,
-                                          ukb_for_grm_plink_path,
-                                          skip_model_fitting=model_created, n_threads=n_threads)
-
-        model_file = p.read_input(model_file_path) if model_created else fit_null_task.null_glmm.rda
-        variance_ratio_file = p.read_input(variant_variance_ratio_file_path) if variant_var_ratio_created else \
-            fit_null_task.null_glmm['variant.varianceRatio.txt']
-
-        vcf_task = None
-        if not vcf_created:
-            vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(), sample_mapping_file, gene)
-
-        vcf_file = p.read_input_group(vcf={'vcf.gz': f'{vcf_root}.vcf.gz',
-                                           'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
-        run_saige(p, results_path, model_file, variance_ratio_file, vcf_file.vcf, get_ukb_samples_file_path(), dependency=vcf_task)
+    # if args.variant_test:
+    #     model_created = True  # hl.hadoop_exists(model_file_path) and not args.overwrite
+    #     variant_var_ratio_created = True  # hl.hadoop_exists(variant_variance_ratio_file_path) and not args.overwrite
+    #     vcf_created = False  # hl.hadoop_exists(f'{vcf_root}.vcf.gz') and not args.overwrite
+    #     pheno = phenos[0]
+    #     variant_variance_ratio_file_path = f'{null_glmm_root}.variant.varianceRatio.txt'
+    #     variant_var_ratio_created = True  # hl.hadoop_exists(variant_variance_ratio_file_path) and not args.overwrite
+    #     if not (model_created and variant_var_ratio_created):
+    #         fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
+    #                                       ukb_for_grm_plink_path,
+    #                                       skip_model_fitting=model_created, n_threads=n_threads)
+    #
+    #     model_file = p.read_input(model_file_path) if model_created else fit_null_task.null_glmm.rda
+    #     variance_ratio_file = p.read_input(variant_variance_ratio_file_path) if variant_var_ratio_created else \
+    #         fit_null_task.null_glmm['variant.varianceRatio.txt']
+    #
+    #     vcf_task = None
+    #     if not vcf_created:
+    #         vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(), sample_mapping_file, gene)
+    #
+    #     vcf_file = p.read_input_group(vcf={'vcf.gz': f'{vcf_root}.vcf.gz',
+    #                                        'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
+    #     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file.vcf, get_ukb_samples_file_path(), dependency=vcf_task)
 
     if args.gene_test:
-        if not (model_created and gene_var_ratio_created and sparse_sigma_created):
-            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno_name, trait_type, covariates,
-                                          ukb_for_grm_plink_path,
-                                          sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
-                                          skip_model_fitting=model_created, n_threads=n_threads)
+        overwrite_sparse_grm = False
+        if overwrite_sparse_grm:
+            sparse_grm = create_sparse_grm(p, sparse_grm_root, ukb_for_grm_plink_path,
+                                           relatedness_cutoff, num_markers, n_threads=n_threads)
+        else:
+            sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
+                                               (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
 
-        model_file = p.read_input(model_file_path) if model_created else fit_null_task.null_glmm.rda
-        variance_ratio_file = p.read_input(gene_variance_ratio_file_path) if gene_var_ratio_created else \
-            fit_null_task.null_glmm['gene.varianceRatio.txt']
-        sparse_sigma_file = p.read_input(sparse_sigma_file_path) if sparse_sigma_created else \
-            fit_null_task.null_glmm[f'gene.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
+        overwrite_null_models = True
+        null_model_dir = f'{root}/null_glmm'
+        if not overwrite_null_models:
+            null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
+        null_models = {}
 
-        vcf_task = None
-        if not vcf_created:
-            vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(), sample_mapping_file, gene)
+        for pheno in phenos:
+            null_glmm_root = f'{null_model_dir}/{pheno}'
+            model_file_path = f'{null_glmm_root}.rda'
+            gene_variance_ratio_file_path = f'{null_glmm_root}.gene.varianceRatio.txt'
+            sparse_sigma_file_path = gene_variance_ratio_file_path + sparse_grm_extension.replace("GRM", "Sigma")
 
-        vcf_file = p.read_input_group(**{'vcf.gz': f'{vcf_root}.vcf.gz',
-                                         'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
-        group_file = p.read_input(f'{vcf_root}.gene.txt')
+            if not overwrite_null_models and null_glmm_root in null_models_already_created:
+                model_file = p.read_input(model_file_path)
+                variance_ratio_file = p.read_input(gene_variance_ratio_file_path)
+                sparse_sigma_file = p.read_input(sparse_sigma_file_path)
+            else:
+                fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
+                                              ukb_for_grm_plink_path,
+                                              sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
+                                              skip_model_fitting=not overwrite_null_models, n_threads=n_threads)
+                model_file = fit_null_task.null_glmm.rda
+                variance_ratio_file = fit_null_task.null_glmm['gene.varianceRatio.txt']
+                sparse_sigma_file = fit_null_task.null_glmm[
+                    f'gene.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
+            null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
 
-        run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, get_ukb_samples_file_path(),
-                  group_file, sparse_sigma_file, dependency=vcf_task)
+        chrom_lengths = {'chr1': 248956422}  # hl.get_reference('GRCh38').lengths
+
+        vcf_dir = f'{root}/vcf'
+        overwrite_vcfs = True
+        if not overwrite_vcfs:
+            vcfs_already_created = {x['path'] for x in hl.hadoop_ls(vcf_dir)}
+        chunk_size = int(1e6)
+        vcfs = {}
+        for chrom in range(1, 3):  # 23
+            i = 0
+            chromosome = f'chr{chrom}'
+            for start_pos in range(1, chrom_lengths[chromosome], chunk_size):
+                i += 1
+                if i == 6:
+                    break
+                interval = f'{chromosome}:{start_pos}-{start_pos + chunk_size}'
+                vcf_root = f'{vcf_dir}/test_{chromosome}_{start_pos}'
+                if not overwrite_vcfs and vcf_root in vcfs_already_created:
+                    vcf_file = p.read_input_group(**{'vcf.gz': f'{vcf_root}.vcf.gz',
+                                                     'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
+                    group_file = p.read_input(f'{vcf_root}.gene.txt')
+                else:
+                    vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(),
+                                                   sample_mapping_file, interval=interval)
+                    vcf_file = vcf_task.vcf
+                    group_file = vcf_task.group_file
+                vcfs[interval] = (vcf_file, group_file)
+
+        result_dir = f'{root}/result'
+        for pheno in phenos:
+            model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
+            for chrom in range(1, 3):  # 23
+                i = 0
+                chromosome = f'chr{chrom}'
+                for start_pos in range(1, chrom_lengths[chromosome], chunk_size):
+                    i += 1
+                    if i == 6:
+                        break
+                    interval = f'{chromosome}:{start_pos}-{start_pos + chunk_size}'
+                    vcf_file, group_file = vcfs[interval]
+                    results_path = f'{result_dir}/{pheno}/result_{pheno}_{chromosome}_{start_pos}'
+                    run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, get_ukb_samples_file_path(),
+                              group_file, sparse_sigma_file)
 
     p.run(dry_run=False, verbose=True, delete_scratch_on_exit=False)
 
