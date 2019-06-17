@@ -48,8 +48,10 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
                         gene: str = None, interval: str = None, groups=None):
     if groups is None:
         groups = {'pLoF', 'missense|LC', 'pLoF|missense|LC', 'synonymous'}
-    extract_task: pipeline.pipeline.Task = p.new_task(name='extract_vcf')
-    extract_task.image(HAIL_DOCKER_IMAGE)
+    extract_task: pipeline.pipeline.Task = p.new_task(name='extract_vcf',
+                                                      attributes={
+                                                          'interval': interval
+                                                      }).image(HAIL_DOCKER_IMAGE)
     extract_task.declare_resource_group(vcf={'vcf.gz': f'{{root}}.vcf.gz',
                                              'vcf.gz.tbi': f'{{root}}.vcf.gz.tbi'})
     python_command = f"""import hail as hl
@@ -93,7 +95,11 @@ def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: st
 
     pheno_file = p.read_input(pheno_path)
     in_bfile = p.read_input_group(**{ext: f'{plink_file_root}.{ext}' for ext in ('bed', 'bim', 'fam')})
-    fit_null_task = p.new_task(name=f'fit_null_model_{analysis_type}').cpu(n_threads).storage('1500Mi')
+    fit_null_task = p.new_task(name=f'fit_null_model',
+                               attributes={
+                                   'analysis_type': analysis_type,
+                                   'pheno': pheno_name
+                               }).cpu(n_threads).storage('1500Mi')
     output_files = {ext: f'{{root}}{ext if ext.startswith("_") else "." + ext}' for ext in
                    ('rda', '_30markers.SAIGE.results.txt', f'{analysis_type}.varianceRatio.txt')}
     if analysis_type == 'gene':
@@ -130,16 +136,17 @@ def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: st
 
 def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_file: str,
               vcf_file: pipeline.pipeline.ResourceGroup, samples_file_path: str = None,
-              group_file: str = None, sparse_sigma_file: str = None, dependency: pipeline.pipeline.Task = None,
+              group_file: str = None, sparse_sigma_file: str = None,
               chrom: str = 'chr1', min_mac: int = 1, min_maf: float = 0, max_maf: float = 0.5):
 
     analysis_type = "gene" if sparse_sigma_file is not None else "variant"
     samples_file = p.read_input(samples_file_path)
 
-    # Step 2 is single-threaded only
-    run_saige_task: pipeline.pipeline.Task = p.new_task(name=f'run_saige_{analysis_type}').cpu(1)
-    if dependency is not None:
-        run_saige_task.depends_on(dependency)
+    run_saige_task: pipeline.pipeline.Task = p.new_task(name=f'run_saige',
+                                                        attributes={
+                                                            'analysis_type': analysis_type,
+                                                            'output_path': output_root
+                                                        }).cpu(1)  # Step 2 is single-threaded only
 
     command = (f'Rscript /usr/local/bin/step2_SPAtests.R '
                f'--vcfFile={vcf_file["vcf.gz"]} '
@@ -239,7 +246,7 @@ def main(args):
                     f'gene.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
             null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
 
-        chrom_lengths = {'chr1': 248956422}  # hl.get_reference('GRCh38').lengths
+        chrom_lengths = {'chr1': 248956422, 'chr2': 242193529}  # hl.get_reference('GRCh38').lengths
 
         vcf_dir = f'{root}/vcf'
         overwrite_vcfs = True
@@ -279,7 +286,7 @@ def main(args):
                         break
                     interval = f'{chromosome}:{start_pos}-{start_pos + chunk_size}'
                     vcf_file, group_file = vcfs[interval]
-                    results_path = f'{result_dir}/{pheno}/result_{pheno}_{chromosome}_{start_pos}'
+                    results_path = f'{result_dir}/{pheno}/result_{pheno}_{chromosome}_{str(start_pos).zfill(9)}'
                     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, get_ukb_samples_file_path(),
                               group_file, sparse_sigma_file)
 
