@@ -56,7 +56,7 @@ def post_process_gene_map_ht(gene_ht):
         variant_groups=hl.zip(groups, variant_groups)
     ).explode('variant_groups')
     gene_ht = gene_ht.transmute(annotation=gene_ht.variant_groups[0], variants=hl.sorted(gene_ht.variant_groups[1]))
-    return gene_ht
+    return gene_ht.filter(hl.len(gene_ht.variants) > 0)
 
 
 def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RATE,
@@ -90,11 +90,13 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
 
 
 def annotate_sample_data(mt):
-    meta_ht = hl.read_table(ukb.meta_ht_path(DATA_SOURCE, ukb.CURRENT_FREEZE))
+    # meta_ht = hl.read_table(ukb.meta_ht_path(DATA_SOURCE, ukb.CURRENT_FREEZE))
+    meta_ht = hl.read_table('gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht')
     mapping_ht = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
     mt = mt.annotate_cols(meta=meta_ht[mt.col_key],
                           exome_id=mapping_ht[mt.s.split('_')[1]].eid_26041)
-    mt = mt.filter_cols(hl.is_defined(mt.exome_id) & mt.meta.high_quality).key_cols_by('exome_id')
+    mt = mt.filter_cols(hl.is_defined(mt.exome_id) & ~mt.meta.is_filtered &
+                        (mt.meta.hybrid_pop == '12')).key_cols_by('exome_id')  # TODO: fix populations
     return mt
 
 

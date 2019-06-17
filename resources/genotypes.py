@@ -13,7 +13,7 @@ def get_ukb_exomes_mt_path():
 
 
 def get_ukb_exomes_meta_ht_path():
-    return 'gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht'
+    return 'gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta.ht'
 
 
 def get_ukb_exomes_mt():
