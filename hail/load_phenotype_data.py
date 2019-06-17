@@ -44,6 +44,7 @@ def main(args):
         pre_process_data_dictionary(pheno_description_raw_path, pheno_description_path)
         get_codings().write(coding_ht_path, overwrite=args.overwrite)
         load_icd_data(pre_phesant_data_path, icd_codings_path, temp_bucket).write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
+        read_covariate_data(pre_phesant_data_path).write(get_ukb_covariates_ht_path(), args.overwrite)
 
         for sex in sexes:
             pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userID')
