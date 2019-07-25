@@ -6,7 +6,7 @@ from gnomad_hail import *
 from ukb_exomes import *
 from ukb_phenotypes import *
 
-temp_bucket = 'gs://ukbb-pharma-exome-analysis-temp'
+temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
 
 def run_phenotype_missingness_pca(data_type, input_mt_path: str, overwrite: bool = False):
@@ -78,6 +78,20 @@ def main(args):
                                   pheno_description_path, coding_ht_path, data_type)
             mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
 
+    if args.export_data:
+        num_pcs = 20
+        for data_type in ('continuous', ):
+            cov_ht = hl.read_table(get_ukb_covariates_ht_path()).select('sex', 'age', *[f'pc{x}' for x in range(1, num_pcs + 1)])
+            cov_ht = cov_ht.annotate(sex=cov_ht.sex + 1)
+            cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2,
+                                     age_sex=cov_ht.age * cov_ht.sex)
+            mt = hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full'))
+            if data_type == 'icd':
+                mt = mt.annotate_entries(any_codes=hl.any(lambda x: x, list(mt.entry.values())),
+                                         primary_or_second=mt.primary_codes | mt.secondary_codes)
+            mt = mt.annotate_entries(**cov_ht[mt.row_key])
+            hl.experimental.export_entries_by_col(mt, f'gs://ukbb-pharma-exome-analysis/pheno_{data_type}', batch_size=8, header_json_in_file=False)
+
     # run_phenotype_missingness_pca('categorical', get_ukb_pheno_mt_path('categorical', 'full'))
     # See gs://ukbb-pharma-exome-analysis/missingness_correlation.ipynb
 
@@ -88,6 +102,7 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', help='Overwrite everything', action='store_true')
     parser.add_argument('--load_data', help='Load data', action='store_true')
     parser.add_argument('--combine_data', help='Combine datasets', action='store_true')
+    parser.add_argument('--export_data', help='Export data for SAIGE', action='store_true')
     parser.add_argument('--slack_channel', help='Send message to Slack channel/user', default='@konradjk')
     args = parser.parse_args()
 

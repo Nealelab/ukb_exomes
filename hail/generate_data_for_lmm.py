@@ -114,11 +114,11 @@ def main(args):
 
     if args.create_plink_file:
         mt = prepare_mt_for_plink(ukb.get_ukbb_data(DATA_SOURCE, ukb.CURRENT_FREEZE, adj=True))
-        mt = mt.checkpoint(ukb_for_grm_mt_path, _read_if_exists=True)
+        mt = mt.checkpoint(ukb_for_grm_mt_path, _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()
         ht = hl.ld_prune(mt.GT, r2=0.1)
         ht = ht.annotate_globals(**mt.index_globals())
-        ht = ht.checkpoint(ukb_for_grm_pruned_ht_path, _read_if_exists=False, overwrite=True)
+        ht = ht.checkpoint(ukb_for_grm_pruned_ht_path, _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
 
         if args.overwrite or not hl.hadoop_exists(f'{ukb_for_grm_plink_path}.bed'):
