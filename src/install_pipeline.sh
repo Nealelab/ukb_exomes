@@ -4,7 +4,7 @@
 ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 if [[ "${ROLE}" == 'Master' ]]; then
 
-    /opt/conda/bin/pip install --upgrade cerberus aiohttp
+    /opt/conda/bin/pip install --upgrade cerberus aiohttp jwt
     cd /home/hail
     git clone https://github.com/hail-is/hail.git
     git remote add jigold https://github.com/jigold/hail.git
