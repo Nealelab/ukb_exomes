@@ -56,6 +56,7 @@ def post_process_gene_map_ht(gene_ht):
         variant_groups=hl.zip(groups, variant_groups)
     ).explode('variant_groups')
     gene_ht = gene_ht.transmute(annotation=gene_ht.variant_groups[0], variants=hl.sorted(gene_ht.variant_groups[1]))
+    gene_ht = gene_ht.key_by(start=gene_ht.interval.start)
     return gene_ht.filter(hl.len(gene_ht.variants) > 0)
 
 
