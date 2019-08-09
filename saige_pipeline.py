@@ -387,7 +387,6 @@ def main(args):
         chromosome = f'chr{chrom}'
         chrom_length = chrom_lengths[chromosome]
         for start_pos in range(1, chrom_length, chunk_size):
-            if start_pos != 90000001: continue
             end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
             interval = f'{chromosome}:{start_pos}-{end_pos}'
             vcf_root = f'{vcf_dir}/test_{chromosome}_{str(start_pos).zfill(9)}'
@@ -428,7 +427,6 @@ def main(args):
             chromosome = f'chr{chrom}'
             chrom_length = chrom_lengths[chromosome]
             for start_pos in range(1, chrom_length, chunk_size):
-                if start_pos != 90000001: continue
                 end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
                 interval = f'{chromosome}:{start_pos}-{end_pos}'
                 vcf_file, group_file = vcfs[interval]
