@@ -9,6 +9,9 @@ import shlex
 from pipeline import *
 import pipeline.pipeline
 import time
+from hail.fs.google_fs import GoogleCloudStorageFS
+
+fs = GoogleCloudStorageFS()
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/data'
@@ -307,18 +310,25 @@ def main(args):
     if args.local_test:
         backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
     else:
-        backend = BatchBackend(url='https://batch.hail.is')
+        # backend = BatchBackend(url='https://batch.hail.is')
+        backend = GoogleBackend(
+            service_account='558485866925-compute@developer.gserviceaccount.com',
+            scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
+            worker_cores = 8,
+            worker_disk_size_gb = '20',
+            pool_size = 3,
+            max_instances = 1000)
     p = Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
 
     # if args.variant_test:
-    #     model_created = True  # hl.hadoop_exists(model_file_path) and not args.overwrite
-    #     variant_var_ratio_created = True  # hl.hadoop_exists(variant_variance_ratio_file_path) and not args.overwrite
-    #     vcf_created = False  # hl.hadoop_exists(f'{vcf_root}.vcf.gz') and not args.overwrite
+    #     model_created = True  # fs.exists(model_file_path) and not args.overwrite
+    #     variant_var_ratio_created = True  # fs.exists(variant_variance_ratio_file_path) and not args.overwrite
+    #     vcf_created = False  # fs.exists(f'{vcf_root}.vcf.gz') and not args.overwrite
     #     pheno = phenos[0]
     #     variant_variance_ratio_file_path = f'{null_glmm_root}.variant.varianceRatio.txt'
-    #     variant_var_ratio_created = True  # hl.hadoop_exists(variant_variance_ratio_file_path) and not args.overwrite
+    #     variant_var_ratio_created = True  # fs.exists(variant_variance_ratio_file_path) and not args.overwrite
     #     if not (model_created and variant_var_ratio_created):
     #         fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
     #                                       ukb_for_grm_plink_path,
@@ -346,7 +356,7 @@ def main(args):
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
     if not overwrite_null_models:
-        null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
+        null_models_already_created = {x['path'] for x in fs.ls(null_model_dir)}
     null_models = {}
 
     for pheno_path, pheno_meta in pheno_data.items():
@@ -379,8 +389,8 @@ def main(args):
     vcf_dir = f'{root}/vcf'
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
-    if not overwrite_vcfs and hl.hadoop_exists(vcf_dir):
-        vcfs_already_created = {x['path'] for x in hl.hadoop_ls(vcf_dir)}
+    if not overwrite_vcfs and fs.exists(vcf_dir):
+        vcfs_already_created = {x['path'] for x in fs.ls(vcf_dir)}
     chunk_size = int(1e6)
     vcfs = {}
     for chrom in chromosomes:
@@ -419,8 +429,8 @@ def main(args):
 
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
-        if not overwrite_results and hl.hadoop_exists(pheno_results_dir):
-            results_already_created = {x['path'] for x in hl.hadoop_ls(pheno_results_dir)}
+        if not overwrite_results and fs.exists(pheno_results_dir):
+            results_already_created = {x['path'] for x in fs.ls(pheno_results_dir)}
 
         model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
         for chrom in chromosomes:
