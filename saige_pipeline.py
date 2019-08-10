@@ -386,7 +386,7 @@ def main(args):
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
     if not overwrite_null_models:
-        null_models_already_created = {x['path'] for x in fs.ls(null_model_dir)}
+        null_models_already_created = {'gs://' + x['path'] for x in fs.ls(null_model_dir)}
     null_models = {}
 
     for pheno_path, pheno_meta in pheno_data.items():
@@ -420,7 +420,7 @@ def main(args):
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
     if not overwrite_vcfs and fs.exists(vcf_dir):
-        vcfs_already_created = {x['path'] for x in fs.ls(vcf_dir)}
+        vcfs_already_created = {'gs://' + x['path'] for x in fs.ls(vcf_dir)}
     chunk_size = int(1e6)
     vcfs = {}
     for chrom in chromosomes:
@@ -460,7 +460,7 @@ def main(args):
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
         if not overwrite_results and fs.exists(pheno_results_dir):
-            results_already_created = {x['path'] for x in fs.ls(pheno_results_dir)}
+            results_already_created = {'gs://' + x['path'] for x in fs.ls(pheno_results_dir)}
 
         model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
         for chrom in chromosomes:
