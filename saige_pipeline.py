@@ -2,14 +2,15 @@
 
 __author__ = 'konradk'
 
-from gnomad_hail import *
-# import ukbb_qc.resources as ukb
-from ukb_exomes import *
-import shlex
-from pipeline import *
-import pipeline.pipeline
 import time
+
+# from pipeline import *
+from gnomad_hail import *
 from hail.fs.google_fs import GoogleCloudStorageFS
+from hailtop.pipeline.pipeline import *
+from hailtop import pipeline
+import ukbb_qc.resources as ukb
+from ukb_exomes import *
 
 fs = GoogleCloudStorageFS()
 
@@ -27,10 +28,38 @@ HAIL_DOCKER_IMAGE = 'konradjk/hail_utils:latest'
 SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.5'
 # SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.35.8.2.2'
 
+CHROM_LENGTHS = {
+    'chr1': 248956422,
+    'chr2': 242193529,
+    'chr3': 198295559,
+    'chr4': 190214555,
+    'chr5': 181538259,
+    'chr6': 170805979,
+    'chr7': 159345973,
+    'chr8': 145138636,
+    'chr9': 138394717,
+    'chr10': 133797422,
+    'chr11': 135086622,
+    'chr12': 133275309,
+    'chr13': 114364328,
+    'chr14': 107043718,
+    'chr15': 101991189,
+    'chr16': 90338345,
+    'chr17': 83257441,
+    'chr18': 80373285,
+    'chr19': 58617616,
+    'chr20': 64444167,
+    'chr21': 46709983,
+    'chr22': 50818468,
+    'chrX': 156040895,
+    'chrY': 57227415,
+    'chrM': 16569
+}
+
 
 def read_pheno_index_file(pheno_index_path: str):
     files = {}
-    with hl.hadoop_open(pheno_index_path, 'r') as f:
+    with fs.open(pheno_index_path, 'r') as f:
         for line in f:
             fname, line_data = line.strip().split('\t')
             line_data = json.loads(line_data)
@@ -142,7 +171,8 @@ mt = mt.annotate_rows(rsid=mt.locus.contig + ':' + hl.str(mt.locus.position) + '
         python_command += f"\nhl.export_vcf(mt, '{extract_task.bgz}.bgz')"
 
     python_command = python_command.replace('\n', '; ').strip()
-    command = f'python3 -c "{python_command}";'
+    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
+    command = key_command + f'python3 -c "{python_command}";'
 
     if export_bgen:
         command += f'\n/bgen_v1.1.4-Ubuntu16.04-x86_64/bgenix -g {extract_task.out.bgen} -index -clobber'
@@ -294,7 +324,7 @@ def main(args):
         # phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
 
     num_pcs = 20
-    hl.init(log='/tmp/saige_temp_hail.log')
+    # hl.init(log='/tmp/saige_temp_hail.log')
     start_time = time.time()
     pheno_data = read_pheno_index_file(pheno_data_index_path.format(data_type=trait_type))
     covariates = ','.join(['sex', 'age', 'age2', 'age_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
@@ -311,14 +341,14 @@ def main(args):
         backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
     else:
         # backend = BatchBackend(url='https://batch.hail.is')
-        backend = GoogleBackend(
+        backend = pipeline.GoogleBackend(
             service_account='558485866925-compute@developer.gserviceaccount.com',
             scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
             worker_cores = 8,
             worker_disk_size_gb = '20',
             pool_size = 3,
             max_instances = 1000)
-    p = Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
+    p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
 
@@ -383,7 +413,7 @@ def main(args):
                 f'gene.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
         null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
 
-    chrom_lengths = hl.get_reference('GRCh38').lengths
+    chrom_lengths = CHROM_LENGTHS
 
     use_bgen = args.use_bgen
     vcf_dir = f'{root}/vcf'
