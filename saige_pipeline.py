@@ -156,6 +156,7 @@ mt = mt.annotate_rows(rsid=mt.locus.contig + ':' + hl.str(mt.locus.position) + '
                                                          hl.is_defined(mt.GT),
                                                          hl.map(lambda i: hl.cond(mt.GT.unphased_diploid_gt_index() == i, 1.0, 0.0),
                                                                 hl.range(0, hl.triangle(hl.len(mt.alleles))))))"""
+
         python_command += '\n' + dosage_command.replace("\n", " ")
         if set_missing_to_hom_ref:
             impute_string = "[1.0, 0.0, 0.0]"
@@ -271,7 +272,7 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     run_saige_task.declare_resource_group(result={'gene.txt': '{root}',
                                                   'single.txt': '{root}_single'})
 
-    command = (f'head -2 {group_file} | tac > {group_file}.tmp; mv {group_file}.tmp {group_file}; '
+    command = (# f'head -2 {group_file} | tac > {group_file}.tmp; mv {group_file}.tmp {group_file}; '
                f'Rscript /usr/local/bin/step2_SPAtests.R '
                f'--minMAF={min_maf} '
                f'--minMAC={min_mac} '
@@ -313,15 +314,14 @@ def get_tasks_from_pipeline(p):
 
 # TODO:
 #  continuous: height: 12144/50, bmi: 23104
-#  dichotomous: asthma: ICD J45.9, CF: E84.*, crohn's: K50.*, UC: K51.*, t1d: E10.*, t2d: E11.*
+#  dichotomous: asthma: J45.9, CF: E84.*, crohn's: K50.*, UC: K51.*, t1d: E10.*, t2d: E11.*
 def main(args):
     trait_type = args.trait_type
 
     if trait_type == 'icd':
-        phenos_to_run = {'K519'} #, 'K509', 'E10.9', 'E11.9', 'J45.9'}
+        phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459'}
     else:
-        phenos_to_run = {'50-raw'}
-        # phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
+        phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
 
     num_pcs = 20
     # hl.init(log='/tmp/saige_temp_hail.log')
@@ -331,8 +331,7 @@ def main(args):
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 6
-    chromosomes = range(7, 8)  # 23
-    # chromosomes = range(1, 23)  # 23
+    chromosomes = range(1, 23)  # 23
 
     sparse_grm_root = f'{root}/tmp/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
@@ -346,7 +345,7 @@ def main(args):
             scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
             worker_cores = 8,
             worker_disk_size_gb = '20',
-            pool_size = 3,
+            pool_size = 100,
             max_instances = 1000)
     p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
@@ -390,7 +389,7 @@ def main(args):
     null_models = {}
 
     for pheno_path, pheno_meta in pheno_data.items():
-        if pheno_meta['id'] not in phenos_to_run:
+        if not args.run_all_phenos and pheno_meta['id'] not in phenos_to_run:
             continue
         pheno = pheno_meta['id']
         null_glmm_root = f'{null_model_dir}/{pheno}'
@@ -471,7 +470,7 @@ def main(args):
                 interval = f'{chromosome}:{start_pos}-{end_pos}'
                 vcf_file, group_file = vcfs[interval]
                 results_path = f'{pheno_results_dir}/result_{pheno}_{chromosome}_{str(start_pos).zfill(9)}'
-                if overwrite_results or f'{results_path}.txt' not in results_already_created:
+                if overwrite_results or f'{results_path}.gene.txt' not in results_already_created:
                     samples_file = p.read_input(get_ukb_samples_file_path())
                     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
                               group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen)
@@ -498,6 +497,7 @@ if __name__ == '__main__':
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--trait_type', help='Run single variant SAIGE')
+    parser.add_argument('--run_all_phenos', help='Dry run only', action='store_true')
     parser.add_argument('--dry_run', help='Dry run only', action='store_true')
     parser.add_argument('--send_slack', help='Dry run only', action='store_true')
     args = parser.parse_args()
