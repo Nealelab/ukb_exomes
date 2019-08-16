@@ -34,22 +34,22 @@ def main(args):
         gene_ht = hl.read_table(get_ukb_gene_map_ht_path(False)).select('interval').distinct()
         ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
                        pheno=pheno, coding=coding).drop('Gene')
+        if 'Pvalue_skato_NA' not in list(ht.row):
+            ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
+                             Pvalue_burden_NA=hl.null(hl.tfloat64),
+                             Pvalue_skat_NA=hl.null(hl.tfloat64))
         ht = ht.annotate(total_variants=hl.sum([v for k, v in list(ht.row_value.items()) if 'Nmarker' in k]),
                          interval=gene_ht.key_by('gene_id')[ht.gene_id].interval)
         ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         all_gene_outputs.append(output_ht_path)
         mt = ht.to_matrix_table(['gene_symbol', 'gene_id', 'annotation', 'interval'],
                                 ['pheno', 'coding'], [], [])
-        if 'Pvalue_skato_NA' not in list(mt.entry):
-            mt = mt.annotate_entries(Pvalue_skato_NA=hl.null(hl.tfloat64),
-                                     Pvalue_burden_NA=hl.null(hl.tfloat64),
-                                     Pvalue_skat_NA=hl.null(hl.tfloat64))
         mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         all_gene_mt_outputs.append(output_ht_path.replace('.ht', '.mt'))
 
-    # all_hts = list(map(lambda x: hl.read_table(x), all_gene_outputs))
-    # ht = all_hts[0].union(*all_hts[1:], unify=True)
-    # ht = ht.checkpoint(final_gene_results_ht, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+    all_hts = list(map(lambda x: hl.read_table(x), all_gene_outputs))
+    ht = all_hts[0].union(*all_hts[1:], unify=True)
+    ht = ht.checkpoint(final_gene_results_ht, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
 
     all_mts = list(map(lambda x: hl.read_matrix_table(x), all_gene_mt_outputs))
     chunk_size = int(len(all_mts) ** 0.5) + 1
