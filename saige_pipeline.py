@@ -25,7 +25,7 @@ saige_pheno_types = {
 }
 
 HAIL_DOCKER_IMAGE = 'konradjk/hail_utils:latest'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.5'
+SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.6'
 # SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.35.8.2.2'
 
 CHROM_LENGTHS = {
