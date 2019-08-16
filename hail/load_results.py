@@ -29,15 +29,15 @@ def main(args):
         pheno, coding = pheno
         print(f'Loading: {directory["path"]}/*.gene.txt ...')
         ht = hl.import_table(f'{directory["path"]}/*.gene.txt', delimiter=' ', impute=True,
-                             types={'Pvalue_SKAT': hl.tfloat64}).naive_coalesce(10)
-        fields = ht.Gene.split('_')
-        gene_ht = hl.read_table(get_ukb_gene_map_ht_path(False)).select('interval').distinct()
-        ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
-                       pheno=pheno, coding=coding).drop('Gene')
+                             types={'Pvalue_SKAT': hl.tfloat64})
         if 'Pvalue_skato_NA' not in list(ht.row):
             ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
                              Pvalue_burden_NA=hl.null(hl.tfloat64),
                              Pvalue_skat_NA=hl.null(hl.tfloat64))
+        fields = ht.Gene.split('_')
+        gene_ht = hl.read_table(get_ukb_gene_map_ht_path(False)).select('interval').distinct()
+        ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
+                       pheno=pheno, coding=coding).drop('Gene').naive_coalesce(10)
         ht = ht.annotate(total_variants=hl.sum([v for k, v in list(ht.row_value.items()) if 'Nmarker' in k]),
                          interval=gene_ht.key_by('gene_id')[ht.gene_id].interval)
         ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
@@ -64,8 +64,6 @@ def main(args):
     mt = outer_mts[0]
     for next_mt in outer_mts[1:]:
         mt = mt.union_cols(next_mt)
-    mt.write(final_gene_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite)
-
     mt = mt.checkpoint(final_gene_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
 
     all_variant_outputs = []
