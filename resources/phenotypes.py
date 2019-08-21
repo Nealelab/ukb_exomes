@@ -9,6 +9,7 @@ pheno_description_raw_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_S
 pheno_description_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase.tsv'
 coding_ht_path = 'gs://phenotype_pharma/misc_files/categorical_codings.ht'
 icd_codings_path = 'gs://phenotype_pharma/misc_files/coding19.tsv'
+icd_full_codings_ht_path = 'gs://phenotype_pharma/misc_files/coding19.ht'
 pre_phesant_data_path = 'gs://phenotype_pharma/PHESANT_input/pharma_parsed_and_restricted_to_100K_sample_subset.tsv'
 sample_mapping_file = 'gs://phenotype_pharma/misc_files/Project_26041_bridge.csv'
 
