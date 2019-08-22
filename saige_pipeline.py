@@ -443,7 +443,8 @@ def main(args):
                 if overwrite_results or f'{results_path}.{analysis_type}.txt' not in results_already_created:
                     samples_file = p.read_input(get_ukb_samples_file_path())
                     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
-                              group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen)
+                              group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
+                              chrom=chromosome)
                 if args.local_test:
                     break
             if args.local_test:
