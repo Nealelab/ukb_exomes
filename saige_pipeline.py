@@ -366,7 +366,8 @@ def main(args):
         variance_ratio_file_path = f'{null_glmm_root}.{analysis_type}.varianceRatio.txt'
         sparse_sigma_file_path = variance_ratio_file_path + sparse_grm_extension.replace("GRM", "Sigma")
 
-        if not overwrite_null_models and model_file_path in null_models_already_created:
+        if not overwrite_null_models and model_file_path in null_models_already_created and \
+                variance_ratio_file_path in null_models_already_created:
             model_file = p.read_input(model_file_path)
             variance_ratio_file = p.read_input(variance_ratio_file_path)
             if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
