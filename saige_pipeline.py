@@ -215,7 +215,7 @@ def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: st
     command = '; '.join([bim_fix_command, command])
     fit_null_task.command(command)
     p.write_output(fit_null_task.null_glmm, output_root)
-    p.write_output(fit_null_task.stdout, f'{output_root}.log')
+    p.write_output(fit_null_task.stdout, f'{output_root}.{analysis_type}.log')
     # Runtimes: 8 threads: ~5 minutes of 100% CPU (~3G RAM), followed by ~9 minutes of 800% (~6G RAM)
     return fit_null_task
 
@@ -274,7 +274,7 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
             f"if [[ $output_length == 1 ]]; then echo 'but not enough output' | tee -a {run_saige_task.stdout}; exit 1; fi; fi"
     run_saige_task.command(command)
     p.write_output(run_saige_task.result, output_root)
-    p.write_output(run_saige_task.stdout, f'{output_root}.log')
+    p.write_output(run_saige_task.stdout, f'{output_root}.{analysis_type}.log')
     # Runtimes: PCSK9 (4 groups, 31v, 289v, 320v, 116v): 22 minutes
 
 
