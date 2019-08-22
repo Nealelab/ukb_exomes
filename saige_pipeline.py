@@ -235,10 +235,13 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
                                                             'chromosome': chrom
                                                         }).cpu(1).storage(storage)  # Step 2 is single-threaded only
 
-    run_saige_task.declare_resource_group(result={'gene.txt': '{root}',
-                                                  'single.txt': '{root}_single'})
+    if analysis_type == 'gene':
+        run_saige_task.declare_resource_group(result={'gene.txt': '{root}',
+                                                      'single.txt': '{root}_single'})
+    else:
+        run_saige_task.declare_resource_group(result={'single_variant.txt': '{root}'})
 
-    command = (f'head -2 {group_file} | tac > {group_file}.tmp; mv {group_file}.tmp {group_file}; '
+    command = (# f'head -2 {group_file} | tac > {group_file}.tmp; mv {group_file}.tmp {group_file}; '
                f'Rscript /usr/local/bin/step2_SPAtests.R '
                f'--minMAF={min_maf} '
                f'--minMAC={min_mac} '
@@ -263,11 +266,12 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
                     f'--sparseSigmaFile={sparse_sigma_file} '
                     f'--IsSingleVarinGroupTest=TRUE ')
     command += f'--IsOutputAFinCaseCtrl=TRUE 2>&1 | tee {run_saige_task.stdout}; '
-    command += f"input_length=$(wc -l {group_file} | awk '{{print $1}}'); " \
-        f"output_length=$(wc -l {run_saige_task.result['gene.txt']} | awk '{{print $1}}'); " \
-        f"echo 'Got input:' $input_length 'output:' $output_length | tee -a {run_saige_task.stdout}; " \
-        f"if [[ $input_length > 0 ]]; then echo 'got input' | tee -a {run_saige_task.stdout}; " \
-        f"if [[ $output_length == 1 ]]; then echo 'but not enough output' | tee -a {run_saige_task.stdout}; exit 1; fi; fi"
+    if analysis_type == 'gene':
+        command += f"input_length=$(wc -l {group_file} | awk '{{print $1}}'); " \
+            f"output_length=$(wc -l {run_saige_task.result['gene.txt']} | awk '{{print $1}}'); " \
+            f"echo 'Got input:' $input_length 'output:' $output_length | tee -a {run_saige_task.stdout}; " \
+            f"if [[ $input_length > 0 ]]; then echo 'got input' | tee -a {run_saige_task.stdout}; " \
+            f"if [[ $output_length == 1 ]]; then echo 'but not enough output' | tee -a {run_saige_task.stdout}; exit 1; fi; fi"
     run_saige_task.command(command)
     p.write_output(run_saige_task.result, output_root)
     p.write_output(run_saige_task.stdout, f'{output_root}.log')
@@ -359,12 +363,12 @@ def main(args):
         pheno = pheno_meta['id']
         null_glmm_root = f'{null_model_dir}/{pheno}'
         model_file_path = f'{null_glmm_root}.rda'
-        gene_variance_ratio_file_path = f'{null_glmm_root}.gene.varianceRatio.txt'
-        sparse_sigma_file_path = gene_variance_ratio_file_path + sparse_grm_extension.replace("GRM", "Sigma")
+        variance_ratio_file_path = f'{null_glmm_root}.{analysis_type}.varianceRatio.txt'
+        sparse_sigma_file_path = variance_ratio_file_path + sparse_grm_extension.replace("GRM", "Sigma")
 
         if not overwrite_null_models and model_file_path in null_models_already_created:
             model_file = p.read_input(model_file_path)
-            variance_ratio_file = p.read_input(gene_variance_ratio_file_path)
+            variance_ratio_file = p.read_input(variance_ratio_file_path)
             if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
         else:
             fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
@@ -435,7 +439,7 @@ def main(args):
                 interval = f'{chromosome}:{start_pos}-{end_pos}'
                 vcf_file, group_file = vcfs[interval]
                 results_path = f'{pheno_results_dir}/result_{pheno}_{chromosome}_{str(start_pos).zfill(9)}'
-                if overwrite_results or f'{results_path}.txt' not in results_already_created:
+                if overwrite_results or f'{results_path}.{analysis_type}.txt' not in results_already_created:
                     samples_file = p.read_input(get_ukb_samples_file_path())
                     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
                               group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen)
@@ -459,6 +463,7 @@ if __name__ == '__main__':
     parser.add_argument('--create_null_models', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_vcfs', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_results', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--single_variant_only', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--trait_type', help='Run single variant SAIGE')
