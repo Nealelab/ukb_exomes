@@ -285,7 +285,7 @@ def main(args):
     trait_type = args.trait_type
 
     if trait_type == 'icd':
-        phenos_to_run = {'K519'} #, 'K509', 'E10.9', 'E11.9', 'J45.9'}
+        phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251'}
     else:
         phenos_to_run = {'50-raw'}
         # phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
@@ -336,12 +336,15 @@ def main(args):
     #                                        'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
     #     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file.vcf, get_ukb_samples_file_path(), dependency=vcf_task)
 
-    if args.create_sparse_grm:
-        sparse_grm = create_sparse_grm(p, sparse_grm_root, ukb_for_grm_plink_path,
-                                       relatedness_cutoff, num_markers, n_threads=n_threads)
-    else:
-        sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
-                                           (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
+    sparse_grm = None
+    analysis_type = "variant" if args.single_variant_only else "gene"
+    if analysis_type == "gene":
+        if args.create_sparse_grm:
+            sparse_grm = create_sparse_grm(p, sparse_grm_root, ukb_for_grm_plink_path,
+                                           relatedness_cutoff, num_markers, n_threads=n_threads)
+        else:
+            sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
+                                               (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
 
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
@@ -350,6 +353,7 @@ def main(args):
     null_models = {}
 
     for pheno_path, pheno_meta in pheno_data.items():
+        sparse_sigma_file = None
         if pheno_meta['id'] not in phenos_to_run:
             continue
         pheno = pheno_meta['id']
@@ -361,16 +365,16 @@ def main(args):
         if not overwrite_null_models and model_file_path in null_models_already_created:
             model_file = p.read_input(model_file_path)
             variance_ratio_file = p.read_input(gene_variance_ratio_file_path)
-            sparse_sigma_file = p.read_input(sparse_sigma_file_path)
+            if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
         else:
             fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
                                           ukb_for_grm_plink_path,
                                           sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
                                           n_threads=n_threads)
             model_file = fit_null_task.null_glmm.rda
-            variance_ratio_file = fit_null_task.null_glmm['gene.varianceRatio.txt']
-            sparse_sigma_file = fit_null_task.null_glmm[
-                f'gene.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
+            variance_ratio_file = fit_null_task.null_glmm[f'{analysis_type}.varianceRatio.txt']
+            if analysis_type == 'gene': sparse_sigma_file = fit_null_task.null_glmm[
+                f'{analysis_type}.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
         null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
 
     chrom_lengths = hl.get_reference('GRCh38').lengths
