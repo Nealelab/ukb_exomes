@@ -81,11 +81,11 @@ def main(args):
 
     if args.export_data:
         num_pcs = 20
-        for data_type in ('continuous', ):
+        for data_type in ('continuous', 'icd'):
             cov_ht = hl.read_table(get_ukb_covariates_ht_path()).select('sex', 'age', *[f'pc{x}' for x in range(1, num_pcs + 1)])
-            cov_ht = cov_ht.annotate(sex=cov_ht.sex + 1)
             cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2,
-                                     age_sex=cov_ht.age * cov_ht.sex)
+                                     age_sex=cov_ht.age * cov_ht.sex,
+                                     age2_sex=cov_ht.age ** 2 * cov_ht.sex)
             mt = hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full'))
             if data_type == 'icd':
                 mt = mt.annotate_entries(any_codes=hl.any(lambda x: x, list(mt.entry.values())),

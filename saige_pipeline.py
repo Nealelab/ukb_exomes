@@ -24,6 +24,8 @@ saige_pheno_types = {
     'icd': 'binary'
 }
 
+MIN_CASES = 200
+
 HAIL_DOCKER_IMAGE = 'konradjk/hail_utils:latest'
 SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.6'
 # SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.35.8.2.2'
@@ -203,6 +205,36 @@ def impute_missing_gp(mt, location: str = 'gp', mean_impute: bool = True):
     return mt.annotate_entries(**{location: hl.or_else(mt._gp, gp_expr)}).drop('_gp')
 
 
+def export_pheno(p: Pipeline, output_path: str, pheno: str, covariates_path: str,
+                 n_threads: int = 6, storage: str = '500Mi'):
+    extract_task: pipeline.pipeline.Task = p.new_task(name='extract_pheno',
+                                                      attributes={
+                                                          'pheno': pheno
+                                                      })
+    extract_task.image(HAIL_DOCKER_IMAGE).cpu(n_threads).storage(storage)
+    python_command = f"""import hail as hl
+hl.init(master='local[{n_threads}]', default_reference='GRCh38')
+cov_ht = hl.read_table({covariates_path}).select('sex', 'age', *['pc' + x for x in range(1, num_pcs + 1)])
+cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2,
+                         age_sex=cov_ht.age * cov_ht.sex,
+                         age2_sex=cov_ht.age ** 2 * cov_ht.sex)
+mt = hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full'))
+mt = mt.filter_cols(mt.icd_code == '{pheno}')
+if data_type == 'icd': mt = mt.annotate_entries(any_codes=hl.int(hl.any(lambda x: x, list(mt.entry.values()))), primary_or_second=hl.int(mt.primary_codes | mt.secondary_codes))
+ht = mt.entries().key_by('userId')
+ht = ht.annotate(**cov_ht[ht.key])
+ht.export('{extract_task.out}')"""
+
+    python_command = python_command.replace('\n', '; ').strip()
+    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
+    command = key_command + f'python3 -c "{python_command}";'
+
+    extract_task.command(command.replace('\n', ' '))
+
+    p.write_output(extract_task.out, output_path)
+    return extract_task.out
+
+
 def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: str, trait_type: str, covariates: str,
                   plink_file_root: str, sparse_grm: pipeline.pipeline.Resource = None,
                   sparse_grm_extension: str = None, skip_model_fitting: bool = False,
@@ -326,12 +358,21 @@ def main(args):
         phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251'}
     else:
         phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
+    if args.run_all_phenos:
+        with fs.open('gs://ukbb-pharma-exome-analysis/misc/pheno_cumulative.tsv', 'r') as f:
+            f.readline()
+            for line in f:
+                icd_code, trunc, n_cases, n_controls, rank = line.strip().split('\t')
+                if int(n_cases) >= MIN_CASES:
+                    phenos_to_run.add(icd_code)
+    logger.info(f'Got {len(phenos_to_run)} phenotypes...')
 
     num_pcs = 20
     # hl.init(log='/tmp/saige_temp_hail.log')
     start_time = time.time()
-    pheno_data = read_pheno_index_file(pheno_data_index_path.format(data_type=trait_type))
+    # pheno_data = read_pheno_index_file(pheno_data_index_path.format(data_type=trait_type))
     covariates = ','.join(['sex', 'age', 'age2', 'age_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
+    # covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 6
@@ -389,17 +430,31 @@ def main(args):
             sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
                                                (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
 
+    pheno_export_dir = f'{root}/pheno_export_data'
+    if not args.overwrite_pheno_data:
+        phenos_already_exported = {'gs://' + x['path'] for x in fs.ls(pheno_export_dir)}
+    pheno_exports = {}
+    for pheno in phenos_to_run:
+        pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
+        if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
+            pheno_file = p.read_input(pheno_export_path)
+        else:
+            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_covariates_ht_path())
+        pheno_exports[pheno] = pheno_file
+        if args.local_test:
+            break
+    completed = Counter([type(x[0]) == pipeline.resource.InputResourceFile for x in pheno_exports.values()])
+    logger.info(f'Exporting {completed[False]} phenos (already found {completed[True]})...')
+
+
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
     if not overwrite_null_models:
         null_models_already_created = {'gs://' + x['path'] for x in fs.ls(null_model_dir)}
     null_models = {}
 
-    for pheno_path, pheno_meta in pheno_data.items():
+    for pheno in phenos_to_run:
         sparse_sigma_file = None
-        if not args.run_all_phenos and pheno_meta['id'] not in phenos_to_run:
-            continue
-        pheno = pheno_meta['id']
         null_glmm_root = f'{null_model_dir}/{pheno}'
         model_file_path = f'{null_glmm_root}.rda'
         variance_ratio_file_path = f'{null_glmm_root}.{analysis_type}.varianceRatio.txt'
@@ -411,7 +466,7 @@ def main(args):
             variance_ratio_file = p.read_input(variance_ratio_file_path)
             if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
         else:
-            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
+            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_exports[pheno], pheno, trait_type, covariates,
                                           ukb_for_grm_plink_path,
                                           sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
                                           n_threads=n_threads)
@@ -420,6 +475,9 @@ def main(args):
             if analysis_type == 'gene': sparse_sigma_file = fit_null_task.null_glmm[
                 f'{analysis_type}.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
         null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
+
+    completed = Counter([type(x[0]) == pipeline.resource.InputResourceFile for x in null_models.values()])
+    logger.info(f'Running {completed[False]} null models (already found {completed[True]})...')
 
     chrom_lengths = CHROM_LENGTHS
 
@@ -458,12 +516,14 @@ def main(args):
         if args.local_test:
             break
 
+    completed = Counter([type(x[1]) == pipeline.resource.InputResourceFile for x in vcfs.values()])
+    logger.info(f'Creating {completed[False]} VCFs (already found {completed[True]})...')
+
     result_dir = f'{root}/result'
     overwrite_results = args.overwrite_results
-    for pheno_path, pheno_meta in pheno_data.items():
-        pheno = pheno_meta['id']
-        if pheno not in null_models:
-            continue
+    for i, pheno in enumerate(phenos_to_run):
+        if not i % 10:
+            logger.info(f'Read {i} phenotypes...')
 
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
@@ -501,6 +561,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--create_sparse_grm', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--overwrite_pheno_data', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_null_models', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_vcfs', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_results', help='Run single variant SAIGE', action='store_true')
