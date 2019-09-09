@@ -205,7 +205,7 @@ def impute_missing_gp(mt, location: str = 'gp', mean_impute: bool = True):
     return mt.annotate_entries(**{location: hl.or_else(mt._gp, gp_expr)}).drop('_gp')
 
 
-def export_pheno(p: Pipeline, output_path: str, pheno: str, covariates_path: str,
+def export_pheno(p: Pipeline, output_path: str, pheno: str, covariates_path: str, data_type: str = 'icd',
                  n_threads: int = 6, storage: str = '500Mi'):
     extract_task: pipeline.pipeline.Task = p.new_task(name='extract_pheno',
                                                       attributes={
@@ -213,14 +213,13 @@ def export_pheno(p: Pipeline, output_path: str, pheno: str, covariates_path: str
                                                       })
     extract_task.image(HAIL_DOCKER_IMAGE).cpu(n_threads).storage(storage)
     python_command = f"""import hail as hl
+num_pcs = 20
 hl.init(master='local[{n_threads}]', default_reference='GRCh38')
-cov_ht = hl.read_table({covariates_path}).select('sex', 'age', *['pc' + x for x in range(1, num_pcs + 1)])
-cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2,
-                         age_sex=cov_ht.age * cov_ht.sex,
-                         age2_sex=cov_ht.age ** 2 * cov_ht.sex)
-mt = hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full'))
+cov_ht = hl.read_table('{covariates_path}').select('sex', 'age', *['pc' + str(x) for x in range(1, num_pcs + 1)])
+cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2, age_sex=cov_ht.age * cov_ht.sex, age2_sex=cov_ht.age ** 2 * cov_ht.sex)
+mt = hl.read_matrix_table('gs://ukbb-pharma-exome-analysis/100k/January_2019/phenotype/full/icd.mt')
 mt = mt.filter_cols(mt.icd_code == '{pheno}')
-if data_type == 'icd': mt = mt.annotate_entries(any_codes=hl.int(hl.any(lambda x: x, list(mt.entry.values()))), primary_or_second=hl.int(mt.primary_codes | mt.secondary_codes))
+mt = mt.annotate_entries(any_codes=hl.int(hl.any(lambda x: x, list(mt.entry.values()))), primary_or_second=hl.int(mt.primary_codes | mt.secondary_codes)) if '{data_type}' == 'icd' else mt
 ht = mt.entries().key_by('userId')
 ht = ht.annotate(**cov_ht[ht.key])
 ht.export('{extract_task.out}')"""
@@ -235,14 +234,14 @@ ht.export('{extract_task.out}')"""
     return extract_task.out
 
 
-def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: str, trait_type: str, covariates: str,
+def fit_null_glmm(p: Pipeline, output_root: str, pheno_file: pipeline.pipeline.Resource, pheno_name: str,
+                  trait_type: str, covariates: str,
                   plink_file_root: str, sparse_grm: pipeline.pipeline.Resource = None,
                   sparse_grm_extension: str = None, skip_model_fitting: bool = False,
                   n_threads: int = 8, storage: str = '1500Mi'):
     analysis_type = "variant" if sparse_grm is None else "gene"
     pheno_col = 'any_codes' if trait_type == 'icd' else 'both_sexes'
     user_id_col = 'userId' if trait_type == 'icd' else 'userID'  # TODO: fix on next load
-    pheno_file = p.read_input_group(**{'gz': pheno_path})
     in_bfile = p.read_input_group(**{ext: f'{plink_file_root}.{ext}' for ext in ('bed', 'bim', 'fam')})
     fit_null_task = p.new_task(name=f'fit_null_model',
                                attributes={
@@ -257,13 +256,13 @@ def fit_null_glmm(p: Pipeline, output_root: str, pheno_path: str, pheno_name: st
             f'{{root}}.{analysis_type}.varianceRatio.txt{sparse_sigma_extension}'
     fit_null_task.declare_resource_group(null_glmm=output_files)
     bim_fix_command = f'perl -pi -e s/^chr// {in_bfile.bim}'
-    if trait_type == 'icd':
-        bim_fix_command += (f"; zcat {pheno_file.gz} | perl -p -e 's/true/1/g' | perl -p -e 's/false/0/g' "
-                            f"| gzip -c > {pheno_file.gz}.temp.gz; mv {pheno_file.gz}.temp.gz {pheno_file.gz}")
+    # if trait_type == 'icd':
+    #     bim_fix_command += (f"; zcat {pheno_file.gz} | perl -p -e 's/true/1/g' | perl -p -e 's/false/0/g' "
+    #                         f"| gzip -c > {pheno_file.gz}.temp.gz; mv {pheno_file.gz}.temp.gz {pheno_file.gz}")
 
     command = (f'Rscript /usr/local/bin/step1_fitNULLGLMM.R '
                f'--plinkFile={in_bfile} '
-               f'--phenoFile={pheno_file.gz} '
+               f'--phenoFile={pheno_file} '
                f'--covarColList={covariates} '
                f'--phenoCol={pheno_col} '
                f'--sampleIDColinphenoFile={user_id_col} '
@@ -307,8 +306,7 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     else:
         run_saige_task.declare_resource_group(result={'single_variant.txt': '{root}'})
 
-    command = (# f'head -2 {group_file} | tac > {group_file}.tmp; mv {group_file}.tmp {group_file}; '
-               f'Rscript /usr/local/bin/step2_SPAtests.R '
+    command = (f'Rscript /usr/local/bin/step2_SPAtests.R '
                f'--minMAF={min_maf} '
                f'--minMAC={min_mac} '
                f'--maxMAFforGroupTest={max_maf} '
@@ -355,7 +353,10 @@ def main(args):
     trait_type = args.trait_type
 
     if trait_type == 'icd':
-        phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251'}
+        # phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251'}
+        phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251',
+                         'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}
+        # phenos_to_run = set()
     else:
         phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
     if args.run_all_phenos:
@@ -365,33 +366,36 @@ def main(args):
                 icd_code, trunc, n_cases, n_controls, rank = line.strip().split('\t')
                 if int(n_cases) >= MIN_CASES:
                     phenos_to_run.add(icd_code)
+                    if args.local_test:
+                        break
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
 
     num_pcs = 20
     # hl.init(log='/tmp/saige_temp_hail.log')
     start_time = time.time()
     # pheno_data = read_pheno_index_file(pheno_data_index_path.format(data_type=trait_type))
-    covariates = ','.join(['sex', 'age', 'age2', 'age_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
-    # covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
+    # covariates = ','.join(['sex', 'age', 'age2', 'age_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
+    covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 6
     chromosomes = range(1, 23)  # 23
 
     sparse_grm_root = f'{root}/tmp/sparse'
+    # sparse_grm_root = f'{old_root}/tmp/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
 
-    if args.local_test:
-        backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
-    else:
-        # backend = BatchBackend(url='https://batch.hail.is')
-        backend = pipeline.GoogleBackend(
-            service_account='558485866925-compute@developer.gserviceaccount.com',
-            scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
-            worker_cores = 8,
-            worker_disk_size_gb = '20',
-            pool_size = 100,
-            max_instances = 1000)
+    # if args.local_test:
+    #     backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
+    # else:
+    #     # backend = BatchBackend(url='https://batch.hail.is')
+    backend = pipeline.GoogleBackend(
+        service_account='558485866925-compute@developer.gserviceaccount.com',
+        scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
+        worker_cores = 8,
+        worker_disk_size_gb = '20',
+        pool_size = 100,
+        max_instances = 1000)
     p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
@@ -531,6 +535,7 @@ def main(args):
             results_already_created = {'gs://' + x['path'] for x in fs.ls(pheno_results_dir)}
 
         model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
+        saige_tasks = []
         for chrom in chromosomes:
             chromosome = f'chr{chrom}'
             chrom_length = chrom_lengths[chromosome]
@@ -541,9 +546,10 @@ def main(args):
                 results_path = f'{pheno_results_dir}/result_{pheno}_{chromosome}_{str(start_pos).zfill(9)}'
                 if overwrite_results or f'{results_path}.{analysis_type}.txt' not in results_already_created:
                     samples_file = p.read_input(get_ukb_samples_file_path())
-                    run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
-                              group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
-                              chrom=chromosome)
+                    saige_task = run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
+                                           group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
+                                           chrom=chromosome)
+                    saige_tasks.append(saige_task)
                 if args.local_test:
                     break
             if args.local_test:
