@@ -44,6 +44,24 @@ def get_pheno_annotations():
     return pheno_ht
 
 
+def load_variant_data(directory_root, pheno, overwrite: bool = False):
+    if len(pheno) == 1:
+        pheno.append('')
+    pheno, coding = pheno
+    output_ht_path = f'{directory_root}/variant_results.ht'
+    ht = hl.import_table(f'{directory_root}/*.single.txt', delimiter=' ', impute=True)
+    locus_alleles = ht.markerID.split('_')
+    ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'),
+                   pheno=pheno, coding=coding).distinct().naive_coalesce(50)
+    ht = ht.transmute(Pvalue=ht['p.value'])
+    ht = ht.annotate(**get_vep_formatted_data()[
+        hl.struct(locus=ht.locus, alleles=ht.alleles)])  # TODO: fix this for variants that overlap multiple genes
+    ht = ht.checkpoint(output_ht_path, overwrite=overwrite, _read_if_exists=not overwrite)
+    mt = ht.to_matrix_table(['locus', 'alleles'], ['pheno', 'coding'],
+                            ['markerID', 'gene', 'annotation'], [])
+    mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=overwrite, _read_if_exists=not overwrite)
+
+
 def main(args):
     hl.init(default_reference='GRCh38')
     all_phenos = hl.hadoop_ls(results_dir)
@@ -57,29 +75,9 @@ def main(args):
             #         'K509' in directory['path'] or \
             #         'J459' in directory['path']: continue
             pheno = directory['path'].split('/')[-1].split('-')
-            output_ht_path = f'{directory["path"]}/gene_results.ht'
-            if len(pheno) == 1:
-                pheno.append('')
-            pheno, coding = pheno
-            print(f'Loading: {directory["path"]}/*.gene.txt ...')
-            ht = hl.import_table(f'{directory["path"]}/*.gene.txt', delimiter=' ', impute=True,
-                                 types={'Pvalue_SKAT': hl.tfloat64})
-            if 'Pvalue_skato_NA' not in list(ht.row):
-                ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
-                                 Pvalue_burden_NA=hl.null(hl.tfloat64),
-                                 Pvalue_skat_NA=hl.null(hl.tfloat64))
-            fields = ht.Gene.split('_')
-            gene_ht = hl.read_table(get_ukb_gene_map_ht_path(False)).select('interval').distinct()
-            ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
-                           pheno=pheno, coding=coding).drop('Gene').naive_coalesce(10)
-            ht = ht.annotate(total_variants=hl.sum([v for k, v in list(ht.row_value.items()) if 'Nmarker' in k]),
-                             interval=gene_ht.key_by('gene_id')[ht.gene_id].interval)
-            ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-            all_gene_outputs.append(output_ht_path)
-            mt = ht.to_matrix_table(['gene_symbol', 'gene_id', 'annotation', 'interval'],
-                                    ['pheno', 'coding'], [], [])
-            mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-            all_gene_mt_outputs.append(output_ht_path.replace('.ht', '.mt'))
+            load_gene_data(directory['path'], pheno)
+            all_gene_outputs.append(f'{directory["path"]}/gene_results.ht')
+            all_gene_mt_outputs.append(f'{directory["path"]}/gene_results.mt')
 
         pheno_ht = get_pheno_annotations()
         all_hts = list(map(lambda x: hl.read_table(x), all_gene_outputs))
@@ -98,22 +96,9 @@ def main(args):
         for directory in all_phenos:
             # if 'K519' not in directory['path']: continue
             pheno = directory['path'].split('/')[-1].split('-')
-            output_ht_path = f'{directory["path"]}/variant_results.ht'
-            if len(pheno) == 1:
-                pheno.append('')
-            pheno, coding = pheno
-            ht = hl.import_table(f'{directory["path"]}/*.single.txt', delimiter=' ', impute=True)
-            locus_alleles = ht.markerID.split('_')
-            ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'),
-                           pheno=pheno, coding=coding).distinct().naive_coalesce(50)
-            ht = ht.transmute(Pvalue=ht['p.value'])
-            ht = ht.annotate(**get_vep_formatted_data()[hl.struct(locus=ht.locus, alleles=ht.alleles)])  # TODO: fix this for variants that overlap multiple genes
-            all_variant_outputs.append(output_ht_path)
-            ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-            mt = ht.to_matrix_table(['locus', 'alleles'], ['pheno', 'coding'],
-                                    ['markerID', 'gene', 'annotation'], [])
-            mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-            all_variant_mt_outputs.append(output_ht_path.replace('.ht', '.mt'))
+            load_variant_data(directory["path"], pheno)
+            all_variant_outputs.append(f'{directory["path"]}/variant_results.ht')
+            all_variant_mt_outputs.append(f'{directory["path"]}/variant_results.mt')
 
         pheno_ht = get_pheno_annotations()
         all_hts = list(map(lambda x: hl.read_table(x), all_variant_outputs))
@@ -121,10 +106,34 @@ def main(args):
         ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
         ht = ht.checkpoint(final_variant_results_ht, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
 
-        all_mts = list(map(lambda x: hl.read_matrix_table(x), all_variant_mt_outputs))
-        mt = union_mts_by_tree(all_mts, temp_bucket)
-        mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
-        mt = mt.checkpoint(final_variant_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        # all_mts = list(map(lambda x: hl.read_matrix_table(x), all_variant_mt_outputs))
+        # mt = union_mts_by_tree(all_mts, temp_bucket)
+        # mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
+        # mt = mt.checkpoint(final_variant_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+
+
+def load_gene_data(directory, pheno, overwrite: bool = False):
+    if len(pheno) == 1:
+        pheno.append('')
+    pheno, coding = pheno
+    output_ht_path = f'{directory}/gene_results.ht'
+    print(f'Loading: {directory}/*.gene.txt ...')
+    ht = hl.import_table(f'{directory}/*.gene.txt', delimiter=' ', impute=True,
+                         types={'Pvalue_SKAT': hl.tfloat64})
+    if 'Pvalue_skato_NA' not in list(ht.row):
+        ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
+                         Pvalue_burden_NA=hl.null(hl.tfloat64),
+                         Pvalue_skat_NA=hl.null(hl.tfloat64))
+    fields = ht.Gene.split('_')
+    gene_ht = hl.read_table(get_ukb_gene_map_ht_path(False)).select('interval').distinct()
+    ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
+                   pheno=pheno, coding=coding).drop('Gene').naive_coalesce(10)
+    ht = ht.annotate(total_variants=hl.sum([v for k, v in list(ht.row_value.items()) if 'Nmarker' in k]),
+                     interval=gene_ht.key_by('gene_id')[ht.gene_id].interval)
+    ht = ht.checkpoint(output_ht_path, overwrite=overwrite, _read_if_exists=not overwrite)
+    mt = ht.to_matrix_table(['gene_symbol', 'gene_id', 'annotation', 'interval'],
+                            ['pheno', 'coding'], [], [])
+    mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=overwrite, _read_if_exists=not overwrite)
 
 
 def get_vep_formatted_data():
