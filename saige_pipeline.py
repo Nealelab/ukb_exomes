@@ -339,7 +339,42 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     run_saige_task.command(command)
     p.write_output(run_saige_task.result, output_root)
     p.write_output(run_saige_task.stdout, f'{output_root}.{analysis_type}.log')
+    return run_saige_task
     # Runtimes: PCSK9 (4 groups, 31v, 289v, 320v, 116v): 22 minutes
+
+
+def load_results_into_hail(p: Pipeline, output_root: str, pheno: str, tasks_to_hold,
+                           n_threads: int = 6, storage: str = '500Mi'):
+
+    load_data_task: pipeline.pipeline.Task = p.new_task(name=f'load_data',
+                                                        attributes={
+                                                            'output_path': output_root
+                                                        }).cpu(n_threads).storage(storage)  # Step 2 is single-threaded only
+    data_type = 'variant'
+    # TODO: pull this out into a secondary file that gets pulled onto the server
+    python_command = f"""import hail as hl
+hl.init(master='local[{n_threads}]', default_reference='GRCh38')
+output_ht_path = f'{output_root}/{data_type}_results.ht'
+pheno = pheno + [''] if len(pheno) == 1 else pheno
+pheno, coding = pheno
+ht = hl.import_table(f'{output_root}/*.single.txt', delimiter=' ', impute=True)
+locus_alleles = ht.markerID.split('_')
+ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'), pheno=pheno, coding=coding).distinct().naive_coalesce(50)
+ht = ht.transmute(Pvalue=ht['p.value'])
+ht = ht.annotate(**get_vep_formatted_data()[hl.struct(locus=ht.locus, alleles=ht.alleles)])
+all_variant_outputs.append(output_ht_path)
+ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+mt = ht.to_matrix_table(['locus', 'alleles'], ['pheno', 'coding'], ['markerID', 'gene', 'annotation'], [])
+mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+all_variant_mt_outputs.append(output_ht_path.replace('.ht', '.mt'))"""
+
+    python_command = python_command.replace('\n', '; ').strip()
+    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
+    command = key_command + f'python3 -c "{python_command}";'
+    load_data_task.depends_on(*tasks_to_hold)
+    load_data_task.command(command)
+    p.write_output(load_data_task.result, output_root)
+    p.write_output(load_data_task.stdout, f'{output_root}.{load_data_task}.log')
 
 
 def get_tasks_from_pipeline(p):
@@ -556,6 +591,8 @@ def main(args):
                 break
         if args.local_test:
             break
+
+        load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks)
 
     print(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
     pprint(get_tasks_from_pipeline(p))
