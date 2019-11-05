@@ -7,14 +7,14 @@ import time
 # from pipeline import *
 from gnomad_hail import *
 from hail.fs.google_fs import GoogleCloudStorageFS
-from hailtop.pipeline.pipeline import *
 from hailtop import pipeline
-import ukbb_qc.resources as ukb
+from hailtop.pipeline.pipeline import *
 from ukb_exomes import *
 
 fs = GoogleCloudStorageFS()
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
+# old_root = f'{bucket}/data'
 root = f'{bucket}/data'
 ukb_for_grm_plink_path = f'{bucket}/mt/ukb.for_grm.pruned.plink'
 pheno_data_index_path = 'gs://ukbb-pharma-exome-analysis/pheno_{data_type}/index.tsv'
@@ -26,9 +26,9 @@ saige_pheno_types = {
 
 MIN_CASES = 200
 
-HAIL_DOCKER_IMAGE = 'konradjk/hail_utils:latest'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.6'
-# SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.35.8.2.2'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:latest'
+SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.7'
+SCRIPT_DIR = '/ukb_exomes/hail'
 
 CHROM_LENGTHS = {
     'chr1': 248956422,
@@ -117,66 +117,23 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
         extract_task.declare_resource_group(out={'vcf.gz': f'{{root}}.vcf.gz',
                                                  'vcf.gz.tbi': f'{{root}}.vcf.gz.tbi'})
 
-    python_command = f"""import hail as hl
-hl.init(master='local[{n_threads}]', default_reference='GRCh38')
-gene_ht = hl.read_table('{gene_map_ht_path}')
-mt = hl.read_matrix_table('{mt_path}')
-meta_ht = hl.read_table('gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht')
-meta_ht = meta_ht.filter(~meta_ht.is_filtered & (meta_ht.hybrid_pop == '12'))
-sample_mapping_ht = hl.import_table('{sample_mapping_file}', key='eid_sample', delimiter=',')
-qual_ht = hl.read_table('gs://broad-ukbb/broad.freeze_4/variant_qc/score_rankings/vqsr.ht')
-qual_ht = qual_ht.filter(hl.len(qual_ht.filters) == 0)"""
-
-    if gene is not None:
-        python_command += f"""
-gene_ht = gene_ht.filter(gene_ht.gene_symbol == '{gene}')
-interval = gene_ht.aggregate(hl.agg.take(gene_ht.interval, 1), _localize=False)[0]"""
-    elif interval is not None:
-        python_command += f"""
-interval = [hl.parse_locus_interval('{interval}')]
-gene_ht = hl.filter_intervals(gene_ht, interval)"""
-
-    python_command += (f"""
-gene_ht = gene_ht.filter(hl.set({{'{"', '".join(groups)}'}}).contains(gene_ht.annotation))
-gene_ht.select(group=gene_ht.gene_id + '_' + gene_ht.gene_symbol + '_' + gene_ht.annotation, variant=hl.delimit(gene_ht.variants, '"\\\\t"')).key_by().drop('start').export('{extract_task.group_file}', header=False)""")
-
-    if adj:
-        python_command += "\nmt = mt.filter_entries(mt.adj)"
-
-    python_command += (f"""
-mt = hl.filter_intervals(mt, interval).select_entries('GT')
-mt = mt.annotate_cols(exome_id=sample_mapping_ht[mt.s.split('_')[1]].eid_26041, meta=meta_ht[mt.col_key]).key_cols_by('exome_id')
-mt = mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.exome_id))
-mt = mt.filter_rows(hl.is_defined(qual_ht[mt.row_key]) & (hl.agg.count_where(mt.GT.is_non_ref()) > 0))
-mt = mt.annotate_rows(rsid=mt.locus.contig + ':' + hl.str(mt.locus.position) + '_' + mt.alleles[0] + '/' + mt.alleles[1])""")
-
-    if callrate_filter:
-        python_command += "\nmt = mt.filter_rows(hl.agg.fraction(hl.is_defined(mt.GT)) > 0.95)"
-
-    if export_bgen:
-        dosage_command = """mt = mt.annotate_entries(gp=hl.or_missing(
-                                                         hl.is_defined(mt.GT),
-                                                         hl.map(lambda i: hl.cond(mt.GT.unphased_diploid_gt_index() == i, 1.0, 0.0),
-                                                                hl.range(0, hl.triangle(hl.len(mt.alleles))))))"""
-
-        python_command += '\n' + dosage_command.replace("\n", " ")
-        if set_missing_to_hom_ref:
-            impute_string = "[1.0, 0.0, 0.0]"
-        else:
-            impute_string = "mt.mean_gp"
-            python_command += "\nmt = mt.annotate_rows(mean_gp=hl.agg.array_agg(lambda x: hl.agg.mean(x), mt.gp))"
-        python_command += f"\nmt = mt.annotate_entries(gp=hl.or_else(mt.gp, {impute_string}))"
-        python_command += f"\nhl.export_bgen(mt, '{extract_task.out}', gp=mt.gp, varid=mt.rsid)"
-    else:
-        if set_missing_to_hom_ref:
-            python_command += "\nmt = mt.annotate_entries(GT=hl.or_else(mt.GT, hl.call(0, 0)))"
-        # Note: no mean-imputation for VCF
-        python_command += f"\nhl.export_vcf(mt, '{extract_task.bgz}.bgz')"
-
-    python_command = python_command.replace('\n', '; ').strip()
+    output_file = f'{extract_task.bgz}.bgz' if export_bgen else extract_task.out
+    python_command = f"""python3 {SCRIPT_DIR}/extract_vcf_from_mt.py
+    --sample_mapping_file {sample_mapping_file}
+    --mt_path {mt_path}
+    --gene_map_ht_path {gene_map_ht_path}
+    {"--gene " + gene if gene else ""}
+    {"--interval " + interval if interval else ""}
+    --groups {','.join(groups)}
+    {"--callrate_filter" if callrate_filter else ""} 
+    {"--export_bgen" if export_bgen else ""} 
+    {"" if set_missing_to_hom_ref else "--mean_impute_missing"}
+    {"" if adj else "--no_adj"} 
+    --output_file {output_file} | tee {extract_task.stdout}
+    ;""".replace('\n', ' ')
     key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
-    command = key_command + f'python3 -c "{python_command}";'
 
+    command = key_command + python_command
     if export_bgen:
         command += f'\n/bgen_v1.1.4-Ubuntu16.04-x86_64/bgenix -g {extract_task.out.bgen} -index -clobber'
     else:
@@ -185,52 +142,37 @@ mt = mt.annotate_rows(rsid=mt.locus.contig + ':' + hl.str(mt.locus.position) + '
 
     p.write_output(extract_task.out, output_root)
     p.write_output(extract_task.group_file, f'{output_root}.gene.txt')
+    p.write_output(extract_task.stdout, f'{output_root}.log')
     return extract_task
 
 
-def gt_to_gp(mt, location: str = 'gp'):
-    return mt.annotate_entries(**{location: hl.or_missing(
-        hl.is_defined(mt.GT),
-        hl.map(lambda i: hl.cond(mt.GT.unphased_diploid_gt_index() == i, 1.0, 0.0),
-               hl.range(0, hl.triangle(hl.len(mt.alleles)))))})
-
-
-def impute_missing_gp(mt, location: str = 'gp', mean_impute: bool = True):
-    mt = mt.annotate_entries(_gp = mt.location)
-    if mean_impute:
-        mt = mt.annotate_rows(_mean_gp=hl.agg.array_agg(lambda x: hl.agg.mean(x), mt._gp))
-        gp_expr = mt._mean_gp
-    else:
-        gp_expr = [1.0, 0.0, 0.0]
-    return mt.annotate_entries(**{location: hl.or_else(mt._gp, gp_expr)}).drop('_gp')
-
-
-def export_pheno(p: Pipeline, output_path: str, pheno: str, covariates_path: str, data_type: str = 'icd',
-                 n_threads: int = 6, storage: str = '500Mi'):
+def export_pheno(p: Pipeline, output_path: str, pheno: str, input_mt_path: str, covariates_path: str,
+                 data_type: str = 'icd', n_threads: int = 8, storage: str = '500Mi'):
     extract_task: pipeline.pipeline.Task = p.new_task(name='extract_pheno',
                                                       attributes={
                                                           'pheno': pheno
                                                       })
     extract_task.image(HAIL_DOCKER_IMAGE).cpu(n_threads).storage(storage)
-    python_command = f"""import hail as hl
-num_pcs = 20
-hl.init(master='local[{n_threads}]', default_reference='GRCh38')
-cov_ht = hl.read_table('{covariates_path}').select('sex', 'age', *['pc' + str(x) for x in range(1, num_pcs + 1)])
-cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2, age_sex=cov_ht.age * cov_ht.sex, age2_sex=cov_ht.age ** 2 * cov_ht.sex)
-mt = hl.read_matrix_table('gs://ukbb-pharma-exome-analysis/100k/January_2019/phenotype/full/icd.mt')
-mt = mt.filter_cols(mt.icd_code == '{pheno}')
-mt = mt.annotate_entries(any_codes=hl.int(hl.any(lambda x: x, list(mt.entry.values()))), primary_or_second=hl.int(mt.primary_codes | mt.secondary_codes)) if '{data_type}' == 'icd' else mt
-ht = mt.entries().key_by('userId')
-ht = ht.annotate(**cov_ht[ht.key])
-ht.export('{extract_task.out}')"""
+    coding = None
+    if '-' in pheno:
+        pheno, coding = pheno.split('-')
+    python_command = f"""python3 {SCRIPT_DIR}/export_pheno.py
+    --input_file {input_mt_path} 
+    --covariates_path {covariates_path}
+    --data_type {data_type}
+    --pheno {pheno}
+    {"--coding " + coding if coding else ''}
+    --output_file {extract_task.out}
+    --n_threads {n_threads} | tee {extract_task.stdout}
+    ; """.replace('\n', ' ')
 
-    python_command = python_command.replace('\n', '; ').strip()
     key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
-    command = key_command + f'python3 -c "{python_command}";'
+    command = key_command + python_command
 
-    extract_task.command(command.replace('\n', ' '))
+    extract_task.command(command)
 
     p.write_output(extract_task.out, output_path)
+    p.write_output(extract_task.stdout, f'{output_path}.log')
     return extract_task.out
 
 
@@ -290,7 +232,7 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
               group_file: str = None, sparse_sigma_file: str = None, use_bgen: bool = True,
               trait_type: str = 'continuous',
               chrom: str = 'chr1', min_mac: int = 1, min_maf: float = 0, max_maf: float = 0.5,
-              storage: str = '500Mi'):
+              memory: str = '', storage: str = '500Mi'):
 
     analysis_type = "gene" if sparse_sigma_file is not None else "variant"
     run_saige_task: pipeline.pipeline.Task = p.new_task(name=f'run_saige',
@@ -340,50 +282,61 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     p.write_output(run_saige_task.result, output_root)
     p.write_output(run_saige_task.stdout, f'{output_root}.{analysis_type}.log')
     return run_saige_task
-    # Runtimes: PCSK9 (4 groups, 31v, 289v, 320v, 116v): 22 minutes
 
 
 def load_results_into_hail(p: Pipeline, output_root: str, pheno: str, tasks_to_hold,
-                           n_threads: int = 6, storage: str = '500Mi'):
+                           n_threads: int = 8, storage: str = '500Mi'):
 
     load_data_task: pipeline.pipeline.Task = p.new_task(name=f'load_data',
                                                         attributes={
                                                             'output_path': output_root
-                                                        }).cpu(n_threads).storage(storage)  # Step 2 is single-threaded only
-    data_type = 'variant'
-    # TODO: pull this out into a secondary file that gets pulled onto the server
-    python_command = f"""import hail as hl
-hl.init(master='local[{n_threads}]', default_reference='GRCh38')
-output_ht_path = f'{output_root}/{data_type}_results.ht'
-pheno = pheno + [''] if len(pheno) == 1 else pheno
-pheno, coding = pheno
-ht = hl.import_table(f'{output_root}/*.single.txt', delimiter=' ', impute=True)
-locus_alleles = ht.markerID.split('_')
-ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'), pheno=pheno, coding=coding).distinct().naive_coalesce(50)
-ht = ht.transmute(Pvalue=ht['p.value'])
-ht = ht.annotate(**get_vep_formatted_data()[hl.struct(locus=ht.locus, alleles=ht.alleles)])
-all_variant_outputs.append(output_ht_path)
-ht = ht.checkpoint(output_ht_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-mt = ht.to_matrix_table(['locus', 'alleles'], ['pheno', 'coding'], ['markerID', 'gene', 'annotation'], [])
-mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-all_variant_mt_outputs.append(output_ht_path.replace('.ht', '.mt'))"""
+                                                        }).image(HAIL_DOCKER_IMAGE).cpu(n_threads).storage(storage)
+    load_data_task.depends_on(*tasks_to_hold)
+    python_command = f"""python3 {SCRIPT_DIR}/load_results.py
+    --input_dir {output_root}
+    --pheno {pheno}
+    --gene_map_ht_raw_path gs://ukbb-pharma-exome-analysis/mt/ukb.exomes.gene_map.raw.ht
+    --ukb_vep_ht_path gs://ukbb-pharma-exome-analysis/mt/ukb.exomes.vep.ht
+    --overwrite
+    --n_threads {n_threads} | tee {load_data_task.stdout}
+    ;""".replace('\n', ' ')
 
     python_command = python_command.replace('\n', '; ').strip()
     key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
-    command = key_command + f'python3 -c "{python_command}";'
-    load_data_task.depends_on(*tasks_to_hold)
+    command = key_command + python_command
     load_data_task.command(command)
-    p.write_output(load_data_task.result, output_root)
-    p.write_output(load_data_task.stdout, f'{output_root}.{load_data_task}.log')
+    p.write_output(load_data_task.stdout, f'{output_root}.log')
 
 
 def get_tasks_from_pipeline(p):
     return dict(Counter(map(lambda x: x.name, p.select_tasks(""))))
 
 
-# TODO:
-#  continuous: height: 12144/50, bmi: 23104
-#  dichotomous: asthma: J45.9, CF: E84.*, crohn's: K50.*, UC: K51.*, t1d: E10.*, t2d: E11.*
+def get_phenos_to_run(phenos_to_run, data_type: str, run_one: bool = False):
+    with fs.open(f'gs://ukbb-pharma-exome-analysis/misc/phenos_{data_type}.tsv', 'r') as f:
+        header = f.readline().strip().split('\t')
+        for line in f:
+            fields = dict(zip(header, line.strip().split('\t')))
+            if data_type == 'icd':
+                if int(fields['n_cases_all']) >= MIN_CASES:
+                    phenos_to_run.add(fields['icd_code'])
+                    if run_one:
+                        break
+            else:
+                if int(fields['score']) >= 1:
+                    if data_type == 'categorical' and int(fields['n_cases']) < MIN_CASES:
+                        continue
+                    if fields['coding']:
+                        pheno = f'{fields["pheno"]}-{fields["coding"]}'
+                    else:
+                        pheno = fields['pheno']
+                    phenos_to_run.add(pheno)
+                    if run_one:
+                        break
+
+    return phenos_to_run
+
+
 def main(args):
     trait_type = args.trait_type
 
@@ -395,26 +348,18 @@ def main(args):
     else:
         phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
     if args.run_all_phenos:
-        with fs.open('gs://ukbb-pharma-exome-analysis/misc/pheno_cumulative.tsv', 'r') as f:
-            f.readline()
-            for line in f:
-                icd_code, trunc, n_cases, n_controls, rank = line.strip().split('\t')
-                if int(n_cases) >= MIN_CASES:
-                    phenos_to_run.add(icd_code)
-                    if args.local_test:
-                        break
+        phenos_to_run = set()
+        phenos_to_run = get_phenos_to_run(phenos_to_run, trait_type, args.local_test)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
 
     num_pcs = 20
     # hl.init(log='/tmp/saige_temp_hail.log')
     start_time = time.time()
-    # pheno_data = read_pheno_index_file(pheno_data_index_path.format(data_type=trait_type))
-    # covariates = ','.join(['sex', 'age', 'age2', 'age_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
-    n_threads = 6
-    chromosomes = range(1, 23)  # 23
+    n_threads = 8
+    chromosomes = list(range(1, 23)) + ['X', 'Y']  # 23
 
     sparse_grm_root = f'{root}/tmp/sparse'
     # sparse_grm_root = f'{old_root}/tmp/sparse'
@@ -430,34 +375,10 @@ def main(args):
         worker_cores = 8,
         worker_disk_size_gb = '20',
         pool_size = 100,
-        max_instances = 1000)
+        max_instances = 10000)
     p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
-
-    # if args.variant_test:
-    #     model_created = True  # fs.exists(model_file_path) and not args.overwrite
-    #     variant_var_ratio_created = True  # fs.exists(variant_variance_ratio_file_path) and not args.overwrite
-    #     vcf_created = False  # fs.exists(f'{vcf_root}.vcf.gz') and not args.overwrite
-    #     pheno = phenos[0]
-    #     variant_variance_ratio_file_path = f'{null_glmm_root}.variant.varianceRatio.txt'
-    #     variant_var_ratio_created = True  # fs.exists(variant_variance_ratio_file_path) and not args.overwrite
-    #     if not (model_created and variant_var_ratio_created):
-    #         fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_path, pheno, trait_type, covariates,
-    #                                       ukb_for_grm_plink_path,
-    #                                       skip_model_fitting=model_created, n_threads=n_threads)
-    #
-    #     model_file = p.read_input(model_file_path) if model_created else fit_null_task.null_glmm.rda
-    #     variance_ratio_file = p.read_input(variant_variance_ratio_file_path) if variant_var_ratio_created else \
-    #         fit_null_task.null_glmm['variant.varianceRatio.txt']
-    #
-    #     vcf_task = None
-    #     if not vcf_created:
-    #         vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(), sample_mapping_file, gene)
-    #
-    #     vcf_file = p.read_input_group(vcf={'vcf.gz': f'{vcf_root}.vcf.gz',
-    #                                        'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
-    #     run_saige(p, results_path, model_file, variance_ratio_file, vcf_file.vcf, get_ukb_samples_file_path(), dependency=vcf_task)
 
     sparse_grm = None
     analysis_type = "variant" if args.single_variant_only else "gene"
@@ -478,11 +399,10 @@ def main(args):
         if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
             pheno_file = p.read_input(pheno_export_path)
         else:
-            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_covariates_ht_path())
+            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_pheno_mt_path(trait_type),
+                                      get_ukb_covariates_ht_path(), data_type=trait_type)
         pheno_exports[pheno] = pheno_file
-        if args.local_test:
-            break
-    completed = Counter([type(x[0]) == pipeline.resource.InputResourceFile for x in pheno_exports.values()])
+    completed = Counter([isinstance(x, pipeline.resource.InputResourceFile) for x in pheno_exports.values()])
     logger.info(f'Exporting {completed[False]} phenos (already found {completed[True]})...')
 
 
@@ -550,8 +470,8 @@ def main(args):
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
-            if args.local_test:
-                break
+            # if args.local_test:
+            #     break
         if args.local_test:
             break
 
@@ -562,7 +482,8 @@ def main(args):
     overwrite_results = args.overwrite_results
     for i, pheno in enumerate(phenos_to_run):
         if not i % 10:
-            logger.info(f'Read {i} phenotypes...')
+            n_jobs = dict(Counter(map(lambda x: x.name, p.select_tasks("")))).get("run_saige", 0)
+            logger.info(f'Read {i} phenotypes ({n_jobs} new to run so far)...')
 
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
@@ -585,19 +506,17 @@ def main(args):
                                            group_file, sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
                                            chrom=chromosome)
                     saige_tasks.append(saige_task)
-                if args.local_test:
-                    break
+                # if args.local_test:
+                #     break
             if args.local_test:
                 break
-        if args.local_test:
-            break
-
+        # if saige_tasks:
         load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks)
 
-    print(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
-    pprint(get_tasks_from_pipeline(p))
+    logger.info(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
+    logger.info(f'Submitting: {get_tasks_from_pipeline(p)}')
     p.run(dry_run=args.dry_run, verbose=True, delete_scratch_on_exit=False)
-    pprint(get_tasks_from_pipeline(p))
+    logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
 
 
 if __name__ == '__main__':

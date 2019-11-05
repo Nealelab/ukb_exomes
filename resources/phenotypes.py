@@ -7,6 +7,7 @@ TRANCHE_DATA = {
 
 pheno_description_raw_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase.csv'
 pheno_description_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase.tsv'
+pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
 coding_ht_path = 'gs://phenotype_pharma/misc_files/categorical_codings.ht'
 icd_codings_path = 'gs://phenotype_pharma/misc_files/coding19.tsv'
 icd_full_codings_ht_path = 'gs://phenotype_pharma/misc_files/coding19.ht'
