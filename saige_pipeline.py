@@ -6,12 +6,9 @@ import time
 
 # from pipeline import *
 from gnomad_hail import *
-from hail.fs.google_fs import GoogleCloudStorageFS
 from hailtop import pipeline
 from hailtop.pipeline.pipeline import *
 from ukb_exomes import *
-
-fs = GoogleCloudStorageFS()
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
 # old_root = f'{bucket}/data'
@@ -61,7 +58,7 @@ CHROM_LENGTHS = {
 
 def read_pheno_index_file(pheno_index_path: str):
     files = {}
-    with fs.open(pheno_index_path, 'r') as f:
+    with hl.hadoop_open(pheno_index_path, 'r') as f:
         for line in f:
             fname, line_data = line.strip().split('\t')
             line_data = json.loads(line_data)
@@ -313,7 +310,7 @@ def get_tasks_from_pipeline(p):
 
 
 def get_phenos_to_run(phenos_to_run, data_type: str, run_one: bool = False):
-    with fs.open(f'gs://ukbb-pharma-exome-analysis/misc/phenos_{data_type}.tsv', 'r') as f:
+    with hl.hadoop_open(f'gs://ukbb-pharma-exome-analysis/misc/phenos_{data_type}.tsv', 'r') as f:
         header = f.readline().strip().split('\t')
         for line in f:
             fields = dict(zip(header, line.strip().split('\t')))
@@ -392,7 +389,7 @@ def main(args):
 
     pheno_export_dir = f'{root}/pheno_export_data'
     if not args.overwrite_pheno_data:
-        phenos_already_exported = {'gs://' + x['path'] for x in fs.ls(pheno_export_dir)}
+        phenos_already_exported = {'gs://' + x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
     for pheno in phenos_to_run:
         pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
@@ -409,7 +406,7 @@ def main(args):
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
     if not overwrite_null_models:
-        null_models_already_created = {'gs://' + x['path'] for x in fs.ls(null_model_dir)}
+        null_models_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
     for pheno in phenos_to_run:
@@ -444,8 +441,8 @@ def main(args):
     vcf_dir = f'{root}/vcf'
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
-    if not overwrite_vcfs and fs.exists(vcf_dir):
-        vcfs_already_created = {'gs://' + x['path'] for x in fs.ls(vcf_dir)}
+    if not overwrite_vcfs and hl.hadoop_exists(vcf_dir):
+        vcfs_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(vcf_dir)}
     chunk_size = int(1e6)
     vcfs = {}
     for chrom in chromosomes:
@@ -487,8 +484,8 @@ def main(args):
 
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
-        if not overwrite_results and fs.exists(pheno_results_dir):
-            results_already_created = {'gs://' + x['path'] for x in fs.ls(pheno_results_dir)}
+        if not overwrite_results and hl.hadoop_exists(pheno_results_dir):
+            results_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(pheno_results_dir)}
 
         model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
         saige_tasks = []
