@@ -362,17 +362,10 @@ def main(args):
     # sparse_grm_root = f'{old_root}/tmp/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
 
-    # if args.local_test:
-    #     backend = LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
-    # else:
-    #     # backend = BatchBackend(url='https://batch.hail.is')
-    backend = pipeline.GoogleBackend(
-        service_account='558485866925-compute@developer.gserviceaccount.com',
-        scratch_dir='gs://ukb-pharma-exome-analysis-temp/pipeline/tmp',
-        worker_cores = 8,
-        worker_disk_size_gb = '20',
-        pool_size = 100,
-        max_instances = 10000)
+    if args.local_test:
+        backend = pipeline.LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
+    else:
+        backend = pipeline.BatchBackend(_service='batch2')
     p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
