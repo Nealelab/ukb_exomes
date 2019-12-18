@@ -23,9 +23,8 @@ def main(args):
     else:
         ht = mt.select_cols('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority', **extra_fields).cols()
         ht = ht.annotate(
-            # TODO: fix scoring if we do anything but >= 1
-            score=2 * hl.int((ht.Abbvie_Priority == 'h') | (ht.Biogen_Priority == 'h') | (ht.Pfizer_Priority == 'h')) +
-                  hl.int((ht.Abbvie_Priority == 'm') | (ht.Biogen_Priority == 'm') | (ht.Pfizer_Priority == 'm')))
+            score=2 * (hl.int(ht.Abbvie_Priority == 'h') + hl.int(ht.Biogen_Priority == 'h') + hl.int(ht.Pfizer_Priority == 'h')) +
+                  hl.int(ht.Abbvie_Priority == 'm') + hl.int(ht.Biogen_Priority == 'm') + hl.int(ht.Pfizer_Priority == 'm'))
     ht.export(get_phenotype_summary_tsv_path(args.data_type))
 
 
