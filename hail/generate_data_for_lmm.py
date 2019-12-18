@@ -4,7 +4,7 @@ __author__ = 'konradk'
 
 from gnomad_hail import *
 import ukbb_qc.resources as ukb
-from ukb_exomes.resources import *
+from ukb_exomes import *
 
 DATA_SOURCE = 'broad'
 MIN_CALL_RATE = 0.95
@@ -17,16 +17,7 @@ def create_gene_map_ht(ht, check_gene_contigs=False):
     ht = ht.explode(ht.vep.worst_csq_by_gene_canonical)
     ht = ht.annotate(
         variant_id=ht.locus.contig + ':' + hl.str(ht.locus.position) + '_' + ht.alleles[0] + '/' + ht.alleles[1],
-        annotation=hl.case(missing_false=True)
-            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'HC', 'pLoF')
-            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'LC', 'LC')
-            .when((ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'missense_variant') |
-                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_insertion') |
-                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_deletion'),
-                  'missense')
-            .when(ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant',
-                  'synonymous')
-            .or_missing())
+        annotation=annotation_case_builder(ht.vep.worst_csq_by_gene_canonical))
     if check_gene_contigs:
         gene_contigs = ht.group_by(
             gene_id=ht.vep.worst_csq_by_gene_canonical.gene_id,

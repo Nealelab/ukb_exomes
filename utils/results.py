@@ -1,23 +1,24 @@
 from gnomad_hail import *
 
 
+def annotation_case_builder(worst_csq_by_gene_canonical_expr):
+    return (hl.case(missing_false=True)
+            .when(worst_csq_by_gene_canonical_expr == 'HC', 'pLoF')
+            .when(worst_csq_by_gene_canonical_expr == 'LC', 'LC')
+            .when((worst_csq_by_gene_canonical_expr == 'missense_variant') |
+                  (worst_csq_by_gene_canonical_expr == 'inframe_insertion') |
+                  (worst_csq_by_gene_canonical_expr == 'inframe_deletion'), 'missense')
+            .when(worst_csq_by_gene_canonical_expr == 'synonymous_variant', 'synonymous')
+            .or_missing())
+
+
 def get_vep_formatted_data(ukb_vep_path: str):
     ht = hl.read_table(ukb_vep_path)
     ht = process_consequences(ht)
     ht = ht.explode(ht.vep.worst_csq_by_gene_canonical)
-    ht = ht.annotate(
+    return ht.select(
         gene=ht.vep.worst_csq_by_gene_canonical.gene_symbol,
-        annotation=hl.case(missing_false=True)
-            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'HC', 'pLoF')
-            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'LC', 'LC')
-            .when((ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'missense_variant') |
-                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_insertion') |
-                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_deletion'),
-                  'missense')
-            .when(ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant',
-                  'synonymous')
-            .or_missing())
-    return ht.select('gene', 'annotation')
+        annotation=annotation_case_builder(ht.vep.worst_csq_by_gene_canonical))
 
 
 def load_variant_data(directory_root: str, pheno: str, coding: str, ukb_vep_path: str,
