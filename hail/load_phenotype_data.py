@@ -2,9 +2,8 @@
 
 __author__ = 'konradk'
 
-from gnomad_hail import *
 from ukb_exomes import *
-from ukb_phenotypes import *
+from ukb_common import *
 
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
