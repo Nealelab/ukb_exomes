@@ -88,37 +88,14 @@ def main(args):
 
         print(f'Got {len(all_gene_outputs)} HT paths...')
         pheno_ht = get_pheno_annotations()
-        # raw_hts = list(map(lambda x: hl.read_table(x).select_globals(), all_gene_outputs))
-        # print(f'Modifying HTs...')
-        # all_hts = []
-        # for ht in raw_hts:  # TODO: remove for 200k
-        #     if ht.Pvalue.dtype == hl.tstr: ht = ht.annotate(Pvalue=hl.float(ht.Pvalue))
-        #     if ht.Pvalue_Burden.dtype == hl.tstr: ht = ht.annotate(Pvalue_Burden=hl.float(ht.Pvalue_Burden))
-        #     if ht.Pvalue_skato_NA.dtype == hl.tstr: ht = ht.annotate(Pvalue_skato_NA=hl.float(ht.Pvalue_skato_NA))
-        #     if ht.Pvalue_burden_NA.dtype == hl.tstr: ht = ht.annotate(Pvalue_burden_NA=hl.float(ht.Pvalue_burden_NA))
-        #     if ht.Pvalue_skat_NA.dtype == hl.tstr: ht = ht.annotate(Pvalue_skat_NA=hl.float(ht.Pvalue_skat_NA))
-        #     all_hts.append(ht)
-        # print(f'Unioning {len(raw_hts)} HTs...')
-        # ht = all_hts[0].union(*all_hts[1:], unify=True)
-        # ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
-        # ht = ht.checkpoint(final_gene_results_ht, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        all_hts = list(map(lambda x: hl.read_table(x).select_globals(), all_gene_outputs))
+        print(f'Unioning {len(all_hts)} HTs...')
+        ht = all_hts[0].union(*all_hts[1:], unify=True)
+        ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
+        ht.write(final_gene_results_ht, overwrite=args.overwrite)
 
-        raw_mts = list(map(lambda x: hl.read_matrix_table(x), all_gene_mt_outputs))
-        print(f'Read {len(raw_mts)} MTs...')
-        all_mts = []
-        for ht in raw_mts:  # TODO: remove for 200k
-            if ht.Pvalue.dtype == hl.tstr: ht = ht.annotate_entries(Pvalue=hl.float(ht.Pvalue))
-            if ht.Pvalue_Burden.dtype == hl.tstr: ht = ht.annotate_entries(Pvalue_Burden=hl.float(ht.Pvalue_Burden))
-            if ht.Pvalue_skato_NA.dtype == hl.tstr: ht = ht.annotate_entries(Pvalue_skato_NA=hl.float(ht.Pvalue_skato_NA))
-            if ht.Pvalue_burden_NA.dtype == hl.tstr: ht = ht.annotate_entries(Pvalue_burden_NA=hl.float(ht.Pvalue_burden_NA))
-            if ht.Pvalue_skat_NA.dtype == hl.tstr: ht = ht.annotate_entries(Pvalue_skat_NA=hl.float(ht.Pvalue_skat_NA))
-            all_mts.append(ht)
-        all_mts = [mt if 'n_cases' in list(mt.col) else  # TODO: remove for 200k
-                   mt.annotate_cols(n_cases=hl.null(hl.tint32), n_controls=hl.null(hl.tint32))
-                   for mt in all_mts]
-        print(f'Modified MTs...')
-        all_mts = [mt if 'pheno' in list(mt.col_key) else mt.key_cols_by('pheno', 'coding') for mt in all_mts]  # TODO: remove for 200k
-        print(f'Modified MTs...')
+        all_mts = list(map(lambda x: hl.read_matrix_table(x), all_gene_mt_outputs))
+        print(f'Read {len(all_mts)} MTs...')
         mt = union_mts_by_tree(all_mts, temp_bucket + '/gene')
         print(f'Unioned MTs...')
         mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
@@ -154,37 +131,12 @@ def main(args):
             sys.exit(0)
 
         pheno_ht = get_pheno_annotations()
-        raw_hts = list(map(lambda x: hl.read_table(x), all_variant_outputs))
-        all_hts = []
-        for ht in raw_hts:
-            ht = ht.key_by('locus', 'alleles',
-                           pheno=ht.pheno[0] if ht.pheno.dtype == hl.tarray(hl.tstr) else ht.pheno,  # TODO: remove for 200k
-                           coding=ht.coding)
-            if ht.SE.dtype == hl.tstr:  # TODO: remove for 200k
-                ht = ht.annotate(SE=hl.null(hl.tfloat64))
-            all_hts.append(ht)
+        all_hts = list(map(lambda x: hl.read_table(x), all_variant_outputs))
         ht = all_hts[0].union(*all_hts[1:], unify=True)
         ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
-        ht = ht.checkpoint(final_variant_results_ht, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        ht.write(final_variant_results_ht, overwrite=args.overwrite)
 
-        raw_mts = list(map(lambda x: hl.read_matrix_table(x), all_variant_mt_outputs))
-        all_mts = []
-        for mt in raw_mts:
-            mt = mt.key_cols_by(pheno=mt.pheno[0] if mt.pheno.dtype == hl.tarray(hl.tstr) else mt.pheno,  # TODO: remove for 200k
-                                coding=mt.coding).key_rows_by('locus', 'alleles')
-            if mt.SE.dtype == hl.tstr:  # TODO: remove for 200k
-                mt = mt.annotate_entries(SE=hl.null(hl.tfloat64))
-            if 'AF.Cases' not in list(mt.entry):  # TODO: remove for 200k
-                fields = list(mt.entry)
-                fields.remove('Pvalue')
-                mt = mt.select_entries(*fields,
-                    **{"AF.Cases": hl.null(hl.tfloat64), "AF.Controls": hl.null(hl.tfloat64),
-                       "N.Cases": hl.null(hl.tint32), "N.Controls": hl.null(hl.tint32),
-                       "Pvalue": mt.Pvalue})
-            all_mts.append(mt)
-        all_mts = [mt if 'n_cases' in list(mt.col) else  # TODO: remove for 200k
-                   mt.annotate_cols(n_cases=hl.null(hl.tint32), n_controls=hl.null(hl.tint32))
-                   for mt in all_mts]
+        all_mts = list(map(lambda x: hl.read_matrix_table(x), all_variant_mt_outputs))
         mt = union_mts_by_tree(all_mts, temp_bucket + '/variant')
         mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
         mt = mt.checkpoint(final_variant_results_ht.replace('.ht', '.mt').replace(bucket, temp_bucket),
