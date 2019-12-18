@@ -7,13 +7,19 @@ ukb_for_grm_mt_path = f'{root}/ukb.for_grm.mt'
 ukb_for_grm_pruned_ht_path = f'{root}/ukb.for_grm.pruned.ht'
 ukb_for_grm_plink_path = f'{root}/ukb.for_grm.pruned.plink'
 
+CURRENT_TRANCHE = '200k'
+TRANCHE_DATA = {
+    '100k': ('regeneron', 4),
+    '200k': ('broad', 5)
+}
+
 
 def get_ukb_exomes_mt_path():
-    return ukb.get_ukbb_data_path('broad', 4, hardcalls=True, split=True)
+    return ukb.get_ukbb_data_path(*TRANCHE_DATA[CURRENT_TRANCHE], hardcalls=True, split=True)
 
 
 def get_ukb_exomes_meta_ht_path():
-    return 'gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta.ht'
+    return ukb.meta_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE])
 
 
 def get_ukb_exomes_mt():
@@ -23,6 +29,8 @@ def get_ukb_exomes_mt():
     mapping = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
     mt = mt.annotate_cols(meta=meta[mt.col_key],
                           exome_id=mapping[mt.s.split('_')[1]].eid_26041)
+    vqsr_ht = hl.read_table(ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vqsr'))
+    mt = mt.annotate_rows(vqsr=vqsr_ht[mt.row_key])
     return mt.filter_cols(hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
 
 

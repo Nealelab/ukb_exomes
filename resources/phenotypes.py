@@ -1,8 +1,9 @@
 import hail as hl
 
-CURRENT_TRANCHE = '100k'
+CURRENT_TRANCHE = '200k'
 TRANCHE_DATA = {
-    '100k': 'January_2019'  # 'April_2019'
+    '100k': 'January_2019',
+    '200k': 'November_2019'
 }
 
 pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
