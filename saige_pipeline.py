@@ -17,6 +17,7 @@ ukb_for_grm_plink_path = f'{bucket}/mt/ukb.for_grm.pruned.plink'
 pheno_data_index_path = 'gs://ukbb-pharma-exome-analysis/pheno_{data_type}/index.tsv'
 saige_pheno_types = {
     'continuous': 'quantitative',
+    'biomarkers': 'quantitative',
     'categorical': 'binary',
     'icd': 'binary'
 }
