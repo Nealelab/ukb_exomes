@@ -21,24 +21,11 @@ def get_vep_formatted_data(ukb_vep_path: str):
         annotation=annotation_case_builder(ht.vep.worst_csq_by_gene_canonical))
 
 
-def load_variant_data(directory_root: str, pheno: str, coding: str, ukb_vep_path: str,
+def load_variant_data(directory: str, pheno: str, coding: str, ukb_vep_path: str,
                       n_cases: int = -1, n_controls: int = -1, overwrite: bool = False):
-    output_ht_path = f'{directory_root}/variant_results.ht'
-    # ht = hl.import_table(f'{directory_root}/*.single.txt', delimiter=' ', impute=True)
-    tens = []
-    fourteens = []
-    for file in hl.hadoop_ls(directory_root):
-        if not file['path'].endswith('.single.txt'): continue
-        f = hl.hadoop_open(file['path'])
-        if len(f.readline().split(' ')) > 10:
-            fourteens.append(file['path'])
-        else:
-            tens.append(file['path'])
-    ht = hl.import_table(fourteens, delimiter=' ', impute=True)
-    ht2 = hl.import_table(tens, delimiter=' ', impute=True)
-    ht2 = ht2.annotate(**{'AF.Cases': hl.null(hl.tfloat), 'AF.Controls': hl.null(hl.tfloat),
-                          'N.Cases': hl.null(hl.tint), 'N.Controls': hl.null(hl.tint)})
-    ht = ht.union(ht2)
+    output_ht_path = f'{directory}/variant_results.ht'
+    ht = hl.import_table(f'{directory}/*.single.txt', delimiter=' ', impute=True)
+    print(f'Loading: {directory}/*.single.txt ...')
     locus_alleles = ht.markerID.split('_')
     ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'),
                    pheno=pheno, coding=coding).distinct().naive_coalesce(50)
@@ -57,14 +44,8 @@ def load_gene_data(directory: str, pheno: str, coding: str, gene_ht_map_path: st
     print(f'Loading: {directory}/*.gene.txt ...')
     types = {f'Nmarker_MACCate_{i}': hl.tint32 for i in range(1, 9)}
     types.update({x: hl.tfloat64 for x in ('Pvalue', 'Pvalue_Burden', 'Pvalue_SKAT', 'Pvalue_skato_NA', 'Pvalue_burden_NA', 'Pvalue_skat_NA')})
-    ht = hl.import_table(f'{directory}/*.gene.txt', delimiter=' ', impute=True,
-                         types=types, find_replace=('Pvalue.NA Pvalue_Burden.NA Pvalue_SKAT.NA',
-                                                    'Pvalue_skato_NA Pvalue_burden_NA Pvalue_skat_NA'))  # TODO: remove this after first tranche
+    ht = hl.import_table(f'{directory}/*.gene.txt', delimiter=' ', impute=True, types=types)
 
-    if 'Pvalue_skato_NA' not in list(ht.row):
-        ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
-                         Pvalue_burden_NA=hl.null(hl.tfloat64),
-                         Pvalue_skat_NA=hl.null(hl.tfloat64))
     fields = ht.Gene.split('_')
     gene_ht = hl.read_table(gene_ht_map_path).select('interval').distinct()
     ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
