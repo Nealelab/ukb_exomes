@@ -13,6 +13,10 @@ def get_ukb_exomes_mt_path(tranche: str = CURRENT_TRANCHE):
     return ukb.get_ukbb_data_path(*TRANCHE_DATA[tranche], hardcalls=True, split=True)
 
 
+def get_ukb_exomes_mt(tranche: str = CURRENT_TRANCHE, adj: bool = True):
+    return ukb.get_ukbb_data(*TRANCHE_DATA[tranche], split=True, adj=adj, meta_root='meta')
+
+
 def get_ukb_exomes_meta_ht_path(tranche: str = CURRENT_TRANCHE):
     return ukb.meta_ht_path(*TRANCHE_DATA[tranche])
 
@@ -21,20 +25,16 @@ def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
     return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], 'vqsr')
 
 
-def get_ukb_exomes_mt():
-    from .phenotypes import sample_mapping_file
-    mt = hl.read_matrix_table(get_ukb_exomes_mt_path())
-    meta = hl.read_table(get_ukb_exomes_meta_ht_path())
-    mapping = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
-    mt = mt.annotate_cols(meta=meta[mt.col_key],
-                          exome_id=mapping[mt.s.split('_')[1]].eid_26041)
+def get_processed_ukb_exomes_mt(adj=False):
+    mt = get_ukb_exomes_mt(adj=adj)
+    mt = mt.key_cols_by(exome_id=mt.array_id)
     qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
     mt = mt.annotate_rows(filters=qual_ht[mt.row_key].filters)
-    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
+    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.exome_id))
 
 
-def get_filtered_mt():
-    mt = get_ukb_exomes_mt()
+def get_filtered_mt(adj=False):
+    mt = get_processed_ukb_exomes_mt(adj=adj)
     mt = mt.filter_rows(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
     return mt.filter_rows(hl.len(mt.filters) == 0)
 

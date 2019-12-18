@@ -64,7 +64,6 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
                          variants_per_mac_category: int = VARIANTS_PER_MAC_CATEGORY,
                          variants_per_maf_category: int = VARIANTS_PER_MAF_CATEGORY):
     mt = filter_to_autosomes(mt)
-    mt = annotate_sample_data(mt)
     hq_samples = 100217  # mt.aggregate_cols(hl.agg.count_where(mt.meta.high_quality))
     call_stats_ht = hl.read_table(ukb.var_annotations_ht_path(DATA_SOURCE, ukb.CURRENT_FREEZE, 'call_stats'))
     mt = mt.annotate_rows(call_stats=call_stats_ht[mt.row_key].qc_callstats[0])
@@ -81,17 +80,6 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
     return mt
 
 
-def annotate_sample_data(mt):
-    # meta_ht = hl.read_table(ukb.meta_ht_path(DATA_SOURCE, ukb.CURRENT_FREEZE))
-    meta_ht = hl.read_table('gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht')
-    mapping_ht = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
-    mt = mt.annotate_cols(meta=meta_ht[mt.col_key],
-                          exome_id=mapping_ht[mt.s.split('_')[1]].eid_26041)
-    mt = mt.filter_cols(hl.is_defined(mt.exome_id) & ~mt.meta.is_filtered &
-                        (mt.meta.hybrid_pop == '12')).key_cols_by('exome_id')  # TODO: fix populations
-    return mt
-
-
 def main(args):
     hl.init(default_reference='GRCh38')
 
@@ -104,7 +92,7 @@ def main(args):
         # ht.write(genotypes_vep_path)
 
     if args.create_plink_file:
-        mt = prepare_mt_for_plink(ukb.get_ukbb_data(DATA_SOURCE, ukb.CURRENT_FREEZE, adj=True))
+        mt = prepare_mt_for_plink(get_filtered_mt(adj=True))
         mt = mt.checkpoint(ukb_for_grm_mt_path, _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()
         ht = hl.ld_prune(mt.GT, r2=0.1)
@@ -115,8 +103,7 @@ def main(args):
         if args.overwrite or not hl.hadoop_exists(f'{ukb_for_grm_plink_path}.bed'):
             hl.export_plink(mt, ukb_for_grm_plink_path)
 
-        mt = ukb.get_ukbb_data(DATA_SOURCE, ukb.CURRENT_FREEZE, adj=True)
-        mt = annotate_sample_data(mt)
+        mt = get_filtered_mt()
         if args.overwrite or not hl.hadoop_exists(get_ukb_samples_file_path()):
             with hl.hadoop_open(get_ukb_samples_file_path(), 'w') as f:
                 f.write('\n'.join(mt.exome_id.collect()) + '\n')
