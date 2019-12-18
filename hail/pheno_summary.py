@@ -7,13 +7,9 @@ temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
 def main(args):
     hl.init(default_reference='GRCh38', log='/pheno_agg.log')
-    ht = hl.read_matrix_table(get_ukb_exomes_mt_path()).cols()
-    meta_ht = hl.read_table(get_ukb_exomes_meta_ht_path())
-    print(meta_ht.filter(~meta_ht.is_filtered).count())
-    meta_ht = meta_ht.filter(~meta_ht.is_filtered & (meta_ht.hybrid_pop == '12'))
-    print(meta_ht.count())
-    ht = ht.annotate(meta=meta_ht[ht.key])
-    ht = ht.filter(hl.is_defined(ht.meta))
+
+    ht = get_filtered_mt().cols()
+    print(ht.count())
 
     mt = hl.read_matrix_table(get_ukb_pheno_mt_path(args.data_type, 'full'))
     mt = mt.filter_rows(hl.is_defined(ht[hl.str(mt.userId)]))
