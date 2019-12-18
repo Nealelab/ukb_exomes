@@ -66,8 +66,7 @@ def create_sparse_grm(p: Pipeline, output_path: str, plink_file_root: str,
     return create_sparse_grm_task.sparse_grm
 
 
-def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt_path: str, sample_mapping_file: str,
-                        meta_ht_path: str, qual_ht_path: str,
+def extract_vcf_from_mt(p: Pipeline, output_root: str,
                         gene: str = None, interval: str = None, groups=None,
                         set_missing_to_hom_ref: bool = False, callrate_filter: bool = False, adj: bool = True,
                         export_bgen: bool = True,
@@ -90,11 +89,7 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
 
     output_file = f'{extract_task.bgz}.bgz' if export_bgen else extract_task.out
     command = f"""python3 {SCRIPT_DIR}/extract_vcf_from_mt.py
-    --sample_mapping_file {sample_mapping_file}
-    --mt_path {mt_path}
-    --gene_map_ht_path {gene_map_ht_path}
-    --meta_ht_path {meta_ht_path}
-    --qual_ht_path {qual_ht_path}
+    --load_module ukb_exomes
     {"--gene " + gene if gene else ""}
     {"--interval " + interval if interval else ""}
     --groups {','.join(groups)}

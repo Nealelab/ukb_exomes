@@ -51,6 +51,17 @@ def post_process_gene_map_ht(gene_ht):
     return gene_ht.filter(hl.len(gene_ht.variants) > 0)
 
 
+def mac_category_case_builder(call_stats_expr):
+    return (hl.case()
+            .when(call_stats_expr.AC[1] <= 5, call_stats_expr.AC[1])
+            .when(call_stats_expr.AC[1] <= 10, 10)
+            .when(call_stats_expr.AC[1] <= 20, 20)
+            .when(call_stats_expr.AF[1] <= 0.001, 0.001)
+            .when(call_stats_expr.AF[1] <= 0.01, 0.01)
+            .when(call_stats_expr.AF[1] <= 0.1, 0.1)
+            .default(0.99))
+
+
 def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RATE,
                          variants_per_mac_category: int = VARIANTS_PER_MAC_CATEGORY,
                          variants_per_maf_category: int = VARIANTS_PER_MAF_CATEGORY):
@@ -61,16 +72,7 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
     mt = mt.annotate_rows(call_stats=call_stats_ht[mt.row_key].qc_callstats[0])
     mt = mt.filter_rows((mt.call_stats.AN >= hq_samples * 2 * min_call_rate) &
                         (mt.call_stats.AC[1] > 0))
-    mt = mt.annotate_rows(
-        mac_category=hl.case()
-            .when(mt.call_stats.AC[1] <= 5, mt.call_stats.AC[1])
-            .when(mt.call_stats.AC[1] <= 10, 10)
-            .when(mt.call_stats.AC[1] <= 20, 20)
-            .when(mt.call_stats.AF[1] <= 0.001, 0.001)
-            .when(mt.call_stats.AF[1] <= 0.01, 0.01)
-            .when(mt.call_stats.AF[1] <= 0.1, 0.1)
-            .default(0.99)
-    )
+    mt = mt.annotate_rows(mac_category=mac_category_case_builder(mt.call_stats))
     # category_counter = mt.aggregate_rows(hl.agg.counter(mt.mac_category))
     # mt = mt.annotate_globals(category_counter=category_counter)
     mt = mt.annotate_globals(category_counter={5.0: 343544, 10.0: 792088, 20.0: 476789, 1.0: 5625273, 0.99: 74394,
