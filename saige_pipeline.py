@@ -319,7 +319,7 @@ def main(args):
                          'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}
         # phenos_to_run = set()
     else:
-        phenos_to_run = {'50-raw', '699-raw', '23104-raw'}
+        phenos_to_run = {'50-irnt', '699-irnt', '23104-irnt'}
     if args.run_all_phenos:
         phenos_to_run = set()
         phenos_to_run = get_phenos_to_run(phenos_to_run, trait_type, args.local_test)
@@ -340,7 +340,7 @@ def main(args):
     if args.local_test:
         backend = pipeline.LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
     else:
-        backend = pipeline.BatchBackend(_service='batch2')
+        backend = pipeline.BatchBackend(billing_project='ukb_pharma')
     p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
