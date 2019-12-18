@@ -9,22 +9,27 @@ temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
 
 def main(args):
+    hl.init(log='/load_pheno.log')
     sexes = ('both_sexes_no_sex_specific', 'females', 'males')
-    data_types = ('categorical', 'continuous')
+    data_types = ('categorical', 'continuous') #, 'biomarkers')
+
     if args.load_data:
-        pre_process_data_dictionary(pheno_description_raw_path, pheno_description_path)
-        get_codings().write(coding_ht_path, overwrite=args.overwrite)
-        load_icd_data(pre_phesant_data_path, icd_codings_path, temp_bucket).write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
-        get_full_icd_data_description(icd_codings_path).write(icd_full_codings_ht_path, args.overwrite)
-        read_covariate_data(pre_phesant_data_path).write(get_ukb_covariates_ht_path(), args.overwrite)
+        load_icd_data(get_pre_phesant_data_path(), icd_codings_ht_path, f'{temp_bucket}/{CURRENT_TRANCHE}').write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
+        read_covariate_data(get_pre_phesant_data_path()).write(get_ukb_covariates_ht_path(), args.overwrite)
 
         for sex in sexes:
-            pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userID')
+            pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userId')
             pheno_ht.write(get_ukb_pheno_ht_path(sex), overwrite=args.overwrite)
 
             pheno_ht = hl.read_table(get_ukb_pheno_ht_path(sex))
             for data_type in data_types:
                 pheno_ht_to_mt(pheno_ht, data_type).write(get_ukb_pheno_mt_path(data_type, sex), args.overwrite)
+
+            if CURRENT_TRANCHE == '100k':
+                ht = hl.import_table(get_biomarker_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userID')
+                ht = ht.checkpoint(get_biomarker_ht_path(sex), overwrite=args.overwrite)
+
+                pheno_ht_to_mt(ht, 'continuous').write(get_ukb_pheno_mt_path('biomarkers', sex), overwrite=args.overwrite)
 
             # All codings for categorical phenotypes are bools
             # pheno_types = [(int(x[0].split('_')[0]), x[1].dtype)
@@ -48,7 +53,6 @@ def main(args):
             mt = combine_datasets({sex: get_ukb_pheno_mt_path(data_type, sex) for sex in sexes},
                                   {sex: get_ukb_phesant_summary_tsv_path(sex) for sex in sexes},
                                   pheno_description_path, coding_ht_path, data_type)
-            # TODO: figure out what happened to 26413 (Health score (England)), for instance
             priority_ht = hl.import_table(pheno_description_with_priority_path, impute=True, missing='')
             priority_ht = priority_ht.filter(priority_ht.FieldID != '?')
             priority_ht = priority_ht.key_by(FieldID=hl.int32(priority_ht.FieldID)).select('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority')
