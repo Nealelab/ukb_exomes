@@ -88,7 +88,7 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
                                                  'vcf.gz.tbi': f'{{root}}.vcf.gz.tbi'})
 
     output_file = f'{extract_task.bgz}.bgz' if export_bgen else extract_task.out
-    python_command = f"""python3 {SCRIPT_DIR}/extract_vcf_from_mt.py
+    command = f"""python3 {SCRIPT_DIR}/extract_vcf_from_mt.py
     --sample_mapping_file {sample_mapping_file}
     --mt_path {mt_path}
     --gene_map_ht_path {gene_map_ht_path}
@@ -104,9 +104,7 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
     --group_output_file {extract_task.group_file}
     --output_file {output_file} | tee {extract_task.stdout}
     ;""".replace('\n', ' ')
-    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
 
-    command = key_command + python_command
     if export_bgen:
         command += f'\n/bgen_v1.1.4-Ubuntu16.04-x86_64/bgenix -g {extract_task.out.bgen} -index -clobber'
     else:
@@ -139,10 +137,7 @@ def export_pheno(p: Pipeline, output_path: str, pheno: str, input_mt_path: str, 
     --n_threads {n_threads} | tee {extract_task.stdout}
     ; """.replace('\n', ' ')
 
-    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
-    command = key_command + python_command
-
-    extract_task.command(command)
+    extract_task.command(python_command)
 
     p.write_output(extract_task.out, output_path)
     p.write_output(extract_task.stdout, f'{output_path}.log')
@@ -275,8 +270,8 @@ def load_results_into_hail(p: Pipeline, output_root: str, pheno: str, tasks_to_h
     ;""".replace('\n', ' ')
 
     python_command = python_command.replace('\n', '; ').strip()
-    key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
-    command = key_command + python_command
+    command = 'set -o pipefail; PYTHONPATH=$PYTHONPATH:/ PYSPARK_SUBMIT_ARGS="--conf spark.driver.memory=4g ' \
+              '--conf spark.executor.memory=24g pyspark-shell" ' + python_command
     load_data_task.command(command)
     p.write_output(load_data_task.stdout, f'{output_root}/{pheno}_loading.log')
 
