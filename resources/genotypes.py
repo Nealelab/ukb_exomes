@@ -2,8 +2,6 @@ import hail as hl
 import ukbb_qc.resources as ukb
 from .generic import *
 
-bucket = 'gs://ukbb-pharma-exome-analysis'
-
 
 def get_ukb_grm_mt_path(tranche: str = CURRENT_TRANCHE):
     return f'{bucket}/{tranche}/misc/ukb.for_grm.mt'
