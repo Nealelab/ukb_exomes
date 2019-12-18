@@ -260,9 +260,13 @@ def load_results_into_hail(p: Pipeline, output_root: str, pheno: str, tasks_to_h
                                                             'output_path': output_root
                                                         }).image(HAIL_DOCKER_IMAGE).cpu(n_threads).storage(storage)
     load_data_task.depends_on(*tasks_to_hold)
+    coding = None
+    if '-' in pheno:
+        pheno, coding = pheno.split('-')
     python_command = f"""python3 {SCRIPT_DIR}/load_results.py
     --input_dir {output_root}
     --pheno {pheno}
+    {"--coding " + coding if coding else ''}
     --gene_map_ht_raw_path gs://ukbb-pharma-exome-analysis/mt/ukb.exomes.gene_map.raw.ht
     --ukb_vep_ht_path gs://ukbb-pharma-exome-analysis/mt/ukb.exomes.vep.ht
     --overwrite
