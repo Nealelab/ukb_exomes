@@ -2,8 +2,6 @@
 
 __author__ = 'konradk'
 
-from gnomad_hail import *
-import ukbb_qc.resources as ukb
 from ukb_exomes import *
 
 DATA_SOURCE = 'broad'

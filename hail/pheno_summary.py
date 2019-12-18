@@ -1,6 +1,5 @@
-from ukb_exomes import *
 from ukb_common import *
-from ukbb_qc import resources
+from ukb_exomes import *
 
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
