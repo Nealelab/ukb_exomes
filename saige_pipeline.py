@@ -24,8 +24,8 @@ saige_pheno_types = {
 
 MIN_CASES = 200
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:latest'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.35.8.7'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:1.0'
+SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.2'
 SCRIPT_DIR = '/ukb_exomes/hail'
 
 
@@ -92,6 +92,8 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
     --sample_mapping_file {sample_mapping_file}
     --mt_path {mt_path}
     --gene_map_ht_path {gene_map_ht_path}
+    --meta_ht_path gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht
+    --qual_ht_path gs://broad-ukbb/broad.freeze_4/variant_qc/score_rankings/vqsr.ht
     {"--gene " + gene if gene else ""}
     {"--interval " + interval if interval else ""}
     --groups {','.join(groups)}
@@ -99,6 +101,7 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
     {"--export_bgen" if export_bgen else ""} 
     {"" if set_missing_to_hom_ref else "--mean_impute_missing"}
     {"" if adj else "--no_adj"} 
+    --group_output_file {extract_task.group_file}
     --output_file {output_file} | tee {extract_task.stdout}
     ;""".replace('\n', ' ')
     key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
@@ -275,7 +278,7 @@ def load_results_into_hail(p: Pipeline, output_root: str, pheno: str, tasks_to_h
     key_command = 'mkdir /gsa-key/; gsutil cp gs://ukbb-pharma-exome-analysis/keys/ukb_exomes_pharma.json /gsa-key/privateKeyData; '
     command = key_command + python_command
     load_data_task.command(command)
-    p.write_output(load_data_task.stdout, f'{output_root}.log')
+    p.write_output(load_data_task.stdout, f'{output_root}/{pheno}_loading.log')
 
 
 def get_tasks_from_pipeline(p):
@@ -308,6 +311,7 @@ def get_phenos_to_run(phenos_to_run, data_type: str, run_one: bool = False):
 
 
 def main(args):
+    hl.init(log='/tmp/saige_temp_hail.log')
     trait_type = args.trait_type
 
     if trait_type == 'icd':
@@ -323,13 +327,12 @@ def main(args):
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
 
     num_pcs = 20
-    # hl.init(log='/tmp/saige_temp_hail.log')
     start_time = time.time()
     covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 8
-    chromosomes = list(range(1, 23)) + ['X', 'Y']  # 23
+    chromosomes = list(range(1, 23)) # + ['X', 'Y']  # 23
 
     sparse_grm_root = f'{root}/tmp/sparse'
     # sparse_grm_root = f'{old_root}/tmp/sparse'
@@ -355,7 +358,7 @@ def main(args):
 
     pheno_export_dir = f'{root}/pheno_export_data'
     if not args.overwrite_pheno_data:
-        phenos_already_exported = {'gs://' + x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
+        phenos_already_exported = {x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
     for pheno in phenos_to_run:
         pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
@@ -372,7 +375,7 @@ def main(args):
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
     if not overwrite_null_models:
-        null_models_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(null_model_dir)}
+        null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
     for pheno in phenos_to_run:
@@ -388,6 +391,7 @@ def main(args):
             variance_ratio_file = p.read_input(variance_ratio_file_path)
             if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
         else:
+            if args.skip_any_null_models: continue
             fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_exports[pheno], pheno, trait_type, covariates,
                                           ukb_for_grm_plink_path,
                                           sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
@@ -408,7 +412,7 @@ def main(args):
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
     if not overwrite_vcfs and hl.hadoop_exists(vcf_dir):
-        vcfs_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(vcf_dir)}
+        vcfs_already_created = {x['path'] for x in hl.hadoop_ls(vcf_dir)}
     chunk_size = int(1e6)
     vcfs = {}
     for chrom in chromosomes:
@@ -444,18 +448,20 @@ def main(args):
     result_dir = f'{root}/result'
     overwrite_results = args.overwrite_results
     for i, pheno in enumerate(phenos_to_run):
+        if pheno not in null_models: continue
         if not i % 10:
             n_jobs = dict(Counter(map(lambda x: x.name, p.select_tasks("")))).get("run_saige", 0)
             logger.info(f'Read {i} phenotypes ({n_jobs} new to run so far)...')
 
         pheno_results_dir = f'{result_dir}/{pheno}'
         results_already_created = {}
-        if not overwrite_results and hl.hadoop_exists(pheno_results_dir):
-            results_already_created = {'gs://' + x['path'] for x in hl.hadoop_ls(pheno_results_dir)}
+        if not overwrite_results and not args.skip_saige and hl.hadoop_exists(pheno_results_dir):
+            results_already_created = {x['path'] for x in hl.hadoop_ls(pheno_results_dir)}
 
         model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
         saige_tasks = []
         for chrom in chromosomes:
+            if args.skip_saige: break
             chromosome = f'chr{chrom}'
             chrom_length = chrom_lengths[chromosome]
             for start_pos in range(1, chrom_length, chunk_size):
@@ -473,8 +479,9 @@ def main(args):
                 #     break
             if args.local_test:
                 break
-        # if saige_tasks:
         load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks)
+        if args.limit and n_jobs >= args.limit:
+            break
 
     logger.info(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
     logger.info(f'Submitting: {get_tasks_from_pipeline(p)}')
@@ -487,6 +494,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--create_sparse_grm', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_pheno_data', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--skip_any_null_models', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--skip_saige', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_null_models', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_vcfs', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_results', help='Run single variant SAIGE', action='store_true')
@@ -494,6 +503,7 @@ if __name__ == '__main__':
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--trait_type', help='Run single variant SAIGE')
+    parser.add_argument('--limit', help='Run single variant SAIGE', type=int)
     parser.add_argument('--run_all_phenos', help='Dry run only', action='store_true')
     parser.add_argument('--dry_run', help='Dry run only', action='store_true')
     parser.add_argument('--send_slack', help='Dry run only', action='store_true')
