@@ -3,10 +3,26 @@ import ukbb_qc.resources as ukb
 from .generic import *
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
-root = f'{bucket}/mt'
-ukb_for_grm_mt_path = f'{root}/ukb.for_grm.mt'
-ukb_for_grm_pruned_ht_path = f'{root}/ukb.for_grm.pruned.ht'
-ukb_for_grm_plink_path = f'{root}/ukb.for_grm.pruned.plink'
+
+
+def get_ukb_grm_mt_path(tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.for_grm.mt'
+
+
+def get_ukb_grm_pruned_ht_path(tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.for_grm.pruned.ht'
+
+
+def get_ukb_grm_plink_path(tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.for_grm.pruned.plink'
+
+
+def get_ukb_samples_file_path(tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.exomes.samples'
+
+
+def get_ukb_gene_map_ht_path(post_processed=True, tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.exomes.gene_map{"" if post_processed else ".raw"}.ht'
 
 
 def get_ukb_exomes_mt_path(tranche: str = CURRENT_TRANCHE):
@@ -41,14 +57,3 @@ def get_filtered_mt(adj=False):
 
 def get_ukb_vep_path():
     return ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vep')
-
-
-def get_ukb_samples_file_path():
-    return f'{root}/ukb.exomes.samples'
-
-
-def get_ukb_gene_map_ht_path(post_processed=True):
-    return f'{root}/ukb.exomes.gene_map{"" if post_processed else ".raw"}.ht'
-
-
-genotypes_vep_path = f'{root}/ukb.genotypes.vep.ht'

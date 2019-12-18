@@ -84,15 +84,15 @@ def main(args):
 
     if args.create_plink_file:
         mt = prepare_mt_for_plink(get_filtered_mt(adj=True))
-        mt = mt.checkpoint(ukb_for_grm_mt_path, _read_if_exists=not args.overwrite, overwrite=args.overwrite)
+        mt = mt.checkpoint(get_ukb_grm_mt_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()
         ht = hl.ld_prune(mt.GT, r2=0.1)
         ht = ht.annotate_globals(**mt.index_globals())
-        ht = ht.checkpoint(ukb_for_grm_pruned_ht_path, _read_if_exists=not args.overwrite, overwrite=args.overwrite)
+        ht = ht.checkpoint(get_ukb_grm_pruned_ht_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
 
-        if args.overwrite or not hl.hadoop_exists(f'{ukb_for_grm_plink_path}.bed'):
-            hl.export_plink(mt, ukb_for_grm_plink_path)
+        if args.overwrite or not hl.hadoop_exists(f'{get_ukb_grm_plink_path()}.bed'):
+            hl.export_plink(mt, get_ukb_grm_plink_path())
 
         mt = get_filtered_mt()
         if args.overwrite or not hl.hadoop_exists(get_ukb_samples_file_path()):
