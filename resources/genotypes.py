@@ -33,9 +33,15 @@ def get_ukb_exomes_mt():
     mapping = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
     mt = mt.annotate_cols(meta=meta[mt.col_key],
                           exome_id=mapping[mt.s.split('_')[1]].eid_26041)
-    vqsr_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
-    mt = mt.annotate_rows(vqsr=vqsr_ht[mt.row_key])
-    return mt.filter_cols(hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
+    qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
+    mt = mt.annotate_rows(filters=qual_ht[mt.row_key].filters)
+    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
+
+
+def get_filtered_mt():
+    mt = get_ukb_exomes_mt()
+    mt = mt.filter_rows(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
+    return mt.filter_rows(hl.len(mt.filters) == 0)
 
 
 def get_ukb_vep_path():
