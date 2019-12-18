@@ -14,16 +14,16 @@ TRANCHE_DATA = {
 }
 
 
-def get_ukb_exomes_mt_path():
-    return ukb.get_ukbb_data_path(*TRANCHE_DATA[CURRENT_TRANCHE], hardcalls=True, split=True)
+def get_ukb_exomes_mt_path(tranche: str = CURRENT_TRANCHE):
+    return ukb.get_ukbb_data_path(*TRANCHE_DATA[tranche], hardcalls=True, split=True)
 
 
-def get_ukb_exomes_meta_ht_path():
-    return ukb.meta_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE])
+def get_ukb_exomes_meta_ht_path(tranche: str = CURRENT_TRANCHE):
+    return ukb.meta_ht_path(*TRANCHE_DATA[tranche])
 
 
-def get_ukb_exomes_qual_ht_path():
-    return ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vqsr')
+def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
+    return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], 'vqsr')
 
 
 def get_ukb_exomes_mt():
