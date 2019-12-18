@@ -10,3 +10,5 @@ TRANCHE_DATA = {
     '100k': ('regeneron', 4),
     '200k': ('broad', 5)
 }
+
+public_bucket = 'gs://ukbb-exome-public/'

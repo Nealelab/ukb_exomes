@@ -52,4 +52,3 @@ def get_ukb_gene_map_ht_path(post_processed=True):
 
 
 genotypes_vep_path = f'{root}/ukb.genotypes.vep.ht'
-public_bucket = 'gs://ukbb-exome-public/'

@@ -1,7 +1,6 @@
 from .generic import *
 
 pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
-sample_mapping_file = 'gs://phenotype_pharma/PHESANT_input/linking_files/Project_26041_bridge.csv'
 
 
 def get_ukb_phesant_summary_tsv_path(sex: str = 'both_sexes_no_sex_specific'):

@@ -66,9 +66,9 @@ def create_sparse_grm(p: Pipeline, output_path: str, plink_file_root: str,
     return create_sparse_grm_task.sparse_grm
 
 
-def extract_vcf_from_mt(p: Pipeline, output_root: str,
+def extract_vcf_from_mt(p: Pipeline, output_root: str, module: str = 'ukb_exomes',
                         gene: str = None, interval: str = None, groups=None,
-                        set_missing_to_hom_ref: bool = False, callrate_filter: bool = False, adj: bool = True,
+                        set_missing_to_hom_ref: bool = False, callrate_filter: float = 0.0, adj: bool = True,
                         export_bgen: bool = True,
                         n_threads: int = 2, storage: str = '500Mi', memory: str = ''):
     if groups is None:
@@ -89,11 +89,11 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str,
 
     output_file = f'{extract_task.bgz}.bgz' if export_bgen else extract_task.out
     command = f"""python3 {SCRIPT_DIR}/extract_vcf_from_mt.py
-    --load_module ukb_exomes
+    --load_module {module}
     {"--gene " + gene if gene else ""}
     {"--interval " + interval if interval else ""}
     --groups {','.join(groups)}
-    {"--callrate_filter" if callrate_filter else ""} 
+    {"--callrate_filter " + str(callrate_filter) if callrate_filter else ""} 
     {"--export_bgen" if export_bgen else ""} 
     {"" if set_missing_to_hom_ref else "--mean_impute_missing"}
     {"" if adj else "--no_adj"} 
@@ -427,9 +427,7 @@ def main(args):
                                                      'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
                 group_file = p.read_input(f'{vcf_root}.gene.txt')
             else:
-                vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(),
-                                               get_ukb_exomes_meta_ht_path(), get_ukb_exomes_qual_ht_path(),
-                                               sample_mapping_file, interval=interval, export_bgen=use_bgen)
+                vcf_task = extract_vcf_from_mt(p, vcf_root, interval=interval, export_bgen=use_bgen)
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
