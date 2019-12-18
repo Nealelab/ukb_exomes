@@ -4,7 +4,6 @@ __author__ = 'konradk'
 
 from ukb_exomes import *
 
-DATA_SOURCE = 'broad'
 MIN_CALL_RATE = 0.95
 VARIANTS_PER_MAC_CATEGORY = 2000
 VARIANTS_PER_MAF_CATEGORY = 10000
@@ -65,7 +64,7 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
                          variants_per_maf_category: int = VARIANTS_PER_MAF_CATEGORY):
     mt = filter_to_autosomes(mt)
     hq_samples = 100217  # mt.aggregate_cols(hl.agg.count_where(mt.meta.high_quality))
-    call_stats_ht = hl.read_table(ukb.var_annotations_ht_path(DATA_SOURCE, ukb.CURRENT_FREEZE, 'call_stats'))
+    call_stats_ht = hl.read_table(ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'call_stats'))
     mt = mt.annotate_rows(call_stats=call_stats_ht[mt.row_key].qc_callstats[0])
     mt = mt.filter_rows((mt.call_stats.AN >= hq_samples * 2 * min_call_rate) &
                         (mt.call_stats.AC[1] > 0))
@@ -82,14 +81,6 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
 
 def main(args):
     hl.init(default_reference='GRCh38')
-
-    if args.vep:
-        ht = hl.vep(get_ukb_exomes_mt().rows(), vep_config_path('GRCh38'))
-        ht.write(get_ukb_vep_path(), args.overwrite)
-
-        # gt_mt = hl.read_matrix_table()
-        # ht = hl.vep(mt.rows(), vep_config_path('GRCh38'))
-        # ht.write(genotypes_vep_path)
 
     if args.create_plink_file:
         mt = prepare_mt_for_plink(get_filtered_mt(adj=True))

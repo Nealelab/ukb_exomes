@@ -40,7 +40,7 @@ def get_filtered_mt(adj=False):
 
 
 def get_ukb_vep_path():
-    return f'{root}/ukb.exomes.vep.ht'
+    return ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vep')
 
 
 def get_ukb_samples_file_path():
