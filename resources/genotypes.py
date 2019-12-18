@@ -22,6 +22,10 @@ def get_ukb_exomes_meta_ht_path():
     return ukb.meta_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE])
 
 
+def get_ukb_exomes_qual_ht_path():
+    return ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vqsr')
+
+
 def get_ukb_exomes_mt():
     from .phenotypes import sample_mapping_file
     mt = hl.read_matrix_table(get_ukb_exomes_mt_path())
@@ -29,7 +33,7 @@ def get_ukb_exomes_mt():
     mapping = hl.import_table(sample_mapping_file, key='eid_sample', delimiter=',')
     mt = mt.annotate_cols(meta=meta[mt.col_key],
                           exome_id=mapping[mt.s.split('_')[1]].eid_26041)
-    vqsr_ht = hl.read_table(ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'vqsr'))
+    vqsr_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
     mt = mt.annotate_rows(vqsr=vqsr_ht[mt.row_key])
     return mt.filter_cols(hl.is_defined(mt.exome_id)).key_cols_by('exome_id')
 

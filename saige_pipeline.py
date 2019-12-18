@@ -67,6 +67,7 @@ def create_sparse_grm(p: Pipeline, output_path: str, plink_file_root: str,
 
 
 def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt_path: str, sample_mapping_file: str,
+                        meta_ht_path: str, qual_ht_path: str,
                         gene: str = None, interval: str = None, groups=None,
                         set_missing_to_hom_ref: bool = False, callrate_filter: bool = False, adj: bool = True,
                         export_bgen: bool = True,
@@ -92,8 +93,8 @@ def extract_vcf_from_mt(p: Pipeline, output_root: str, gene_map_ht_path: str, mt
     --sample_mapping_file {sample_mapping_file}
     --mt_path {mt_path}
     --gene_map_ht_path {gene_map_ht_path}
-    --meta_ht_path gs://broad-ukbb/regeneron.freeze_4/sample_qc/meta_w_pop_adj.ht
-    --qual_ht_path gs://broad-ukbb/broad.freeze_4/variant_qc/score_rankings/vqsr.ht
+    --meta_ht_path {meta_ht_path}
+    --qual_ht_path {qual_ht_path}
     {"--gene " + gene if gene else ""}
     {"--interval " + interval if interval else ""}
     --groups {','.join(groups)}
@@ -432,6 +433,7 @@ def main(args):
                 group_file = p.read_input(f'{vcf_root}.gene.txt')
             else:
                 vcf_task = extract_vcf_from_mt(p, vcf_root, get_ukb_gene_map_ht_path(), get_ukb_exomes_mt_path(),
+                                               get_ukb_exomes_meta_ht_path(), get_ukb_exomes_qual_ht_path(),
                                                sample_mapping_file, interval=interval, export_bgen=use_bgen)
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
