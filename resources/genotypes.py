@@ -1,17 +1,12 @@
 import hail as hl
 import ukbb_qc.resources as ukb
+from .generic import *
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/mt'
 ukb_for_grm_mt_path = f'{root}/ukb.for_grm.mt'
 ukb_for_grm_pruned_ht_path = f'{root}/ukb.for_grm.pruned.ht'
 ukb_for_grm_plink_path = f'{root}/ukb.for_grm.pruned.plink'
-
-CURRENT_TRANCHE = '200k'
-TRANCHE_DATA = {
-    '100k': ('regeneron', 4),
-    '200k': ('broad', 5)
-}
 
 
 def get_ukb_exomes_mt_path(tranche: str = CURRENT_TRANCHE):
