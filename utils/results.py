@@ -1,0 +1,102 @@
+from gnomad_hail import *
+
+
+def get_vep_formatted_data(ukb_vep_path: str):
+    ht = hl.read_table(ukb_vep_path)
+    ht = process_consequences(ht)
+    ht = ht.explode(ht.vep.worst_csq_by_gene_canonical)
+    ht = ht.annotate(
+        gene=ht.vep.worst_csq_by_gene_canonical.gene_symbol,
+        annotation=hl.case(missing_false=True)
+            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'HC', 'pLoF')
+            .when(ht.vep.worst_csq_by_gene_canonical.lof == 'LC', 'LC')
+            .when((ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'missense_variant') |
+                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_insertion') |
+                  (ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'inframe_deletion'),
+                  'missense')
+            .when(ht.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant',
+                  'synonymous')
+            .or_missing())
+    return ht.select('gene', 'annotation')
+
+
+def load_variant_data(directory_root: str, pheno: str, coding: str, ukb_vep_path: str,
+                      n_cases: int = -1, n_controls: int = -1, overwrite: bool = False):
+    output_ht_path = f'{directory_root}/variant_results.ht'
+    # ht = hl.import_table(f'{directory_root}/*.single.txt', delimiter=' ', impute=True)
+    tens = []
+    fourteens = []
+    for file in hl.hadoop_ls(directory_root):
+        if not file['path'].endswith('.single.txt'): continue
+        f = hl.hadoop_open(file['path'])
+        if len(f.readline().split(' ')) > 10:
+            fourteens.append(file['path'])
+        else:
+            tens.append(file['path'])
+    ht = hl.import_table(fourteens, delimiter=' ', impute=True)
+    ht2 = hl.import_table(tens, delimiter=' ', impute=True)
+    ht2 = ht2.annotate(**{'AF.Cases': hl.null(hl.tfloat), 'AF.Controls': hl.null(hl.tfloat),
+                          'N.Cases': hl.null(hl.tint), 'N.Controls': hl.null(hl.tint)})
+    ht = ht.union(ht2)
+    locus_alleles = ht.markerID.split('_')
+    ht = ht.key_by(locus=hl.parse_locus(locus_alleles[0]), alleles=locus_alleles[1].split('/'),
+                   pheno=pheno, coding=coding).distinct().naive_coalesce(50)
+    ht = ht.transmute(Pvalue=ht['p.value']).annotate_globals(n_cases=n_cases, n_controls=n_controls)
+    ht = ht.annotate(**get_vep_formatted_data(ukb_vep_path)[
+        hl.struct(locus=ht.locus, alleles=ht.alleles)])  # TODO: fix this for variants that overlap multiple genes
+    ht = ht.checkpoint(output_ht_path, overwrite=overwrite, _read_if_exists=not overwrite).drop('n_cases', 'n_controls')
+    mt = ht.to_matrix_table(['locus', 'alleles'], ['pheno', 'coding'],
+                            ['markerID', 'gene', 'annotation'], []).annotate_cols(n_cases=n_cases, n_controls=n_controls)
+    mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=overwrite, _read_if_exists=not overwrite)
+
+
+def load_gene_data(directory: str, pheno: str, coding: str, gene_ht_map_path: str,
+                   n_cases: int = -1, n_controls: int = -1, overwrite: bool = False):
+    output_ht_path = f'{directory}/gene_results.ht'
+    print(f'Loading: {directory}/*.gene.txt ...')
+    types = {f'Nmarker_MACCate_{i}': hl.tint32 for i in range(1, 9)}
+    types.update({x: hl.tfloat64 for x in ('Pvalue', 'Pvalue_Burden', 'Pvalue_SKAT', 'Pvalue_skato_NA', 'Pvalue_burden_NA', 'Pvalue_skat_NA')})
+    ht = hl.import_table(f'{directory}/*.gene.txt', delimiter=' ', impute=True,
+                         types=types, find_replace=('Pvalue.NA Pvalue_Burden.NA Pvalue_SKAT.NA',
+                                                    'Pvalue_skato_NA Pvalue_burden_NA Pvalue_skat_NA'))  # TODO: remove this after first tranche
+
+    if 'Pvalue_skato_NA' not in list(ht.row):
+        ht = ht.annotate(Pvalue_skato_NA=hl.null(hl.tfloat64),
+                         Pvalue_burden_NA=hl.null(hl.tfloat64),
+                         Pvalue_skat_NA=hl.null(hl.tfloat64))
+    fields = ht.Gene.split('_')
+    gene_ht = hl.read_table(gene_ht_map_path).select('interval').distinct()
+    ht = ht.key_by(gene_id=fields[0], gene_symbol=fields[1], annotation=fields[2],
+                   pheno=pheno, coding=coding).drop('Gene').naive_coalesce(10).annotate_globals(n_cases=n_cases, n_controls=n_controls)
+    ht = ht.annotate(total_variants=hl.sum([v for k, v in list(ht.row_value.items()) if 'Nmarker' in k]),
+                     interval=gene_ht.key_by('gene_id')[ht.gene_id].interval)
+    ht = ht.checkpoint(output_ht_path, overwrite=overwrite, _read_if_exists=not overwrite).drop('n_cases', 'n_controls')
+    mt = ht.to_matrix_table(['gene_symbol', 'gene_id', 'annotation', 'interval'],
+                            ['pheno', 'coding'], [], []).annotate_cols(n_cases=n_cases, n_controls=n_controls)
+    mt.checkpoint(output_ht_path.replace('.ht', '.mt'), overwrite=overwrite, _read_if_exists=not overwrite)
+
+
+def get_cases_and_controls_from_log(log_prefix):
+    cases = controls = -1
+    for chrom in range(10, 23):
+        try:
+            with hl.hadoop_open(f'{log_prefix}_chr{chrom}_000000001.gene.log') as f:
+                for line in f:
+                    if line.startswith('Analyzing'):
+                        fields = line.split()
+                        if len(fields) == 6:
+                            try:
+                                cases = int(fields[1])
+                                controls = int(fields[4])
+                                break
+                            except ValueError:
+                                logger.warn(f'Could not load number of cases or controls from {line}.')
+            return cases, controls
+        except:
+            pass
+    return cases, controls
+
+
+
+
+

@@ -2,58 +2,34 @@
 
 __author__ = 'konradk'
 
-from gnomad_hail import *
 from ukb_exomes import *
-from ukb_phenotypes import *
+from ukb_common import *
 
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
 
-def run_phenotype_missingness_pca(data_type, input_mt_path: str, overwrite: bool = False):
-    # TODO: Move to notebook
-    scores_ht_path = f'{temp_bucket}/{data_type}_pca.ht'
-
-    mt = hl.read_matrix_table(input_mt_path)
-    if data_type == 'icd':
-        mt = mt.annotate_rows(mean_primary_codes=hl.agg.mean(mt.primary_codes))
-        mt = mt.annotate_entries(pheno_norm=hl.int(mt.primary_codes) - mt.mean_primary_codes)
-    else:
-        mt = mt.filter_cols(hl.is_defined(mt.both_sexes_pheno))
-        mt = mt.annotate_entries(pheno_defined=hl.is_defined(mt.both_sexes))
-        mt = mt.annotate_rows(mean_pheno_defined=hl.agg.mean(mt.pheno_defined))
-        mt = mt.annotate_entries(pheno_norm=mt.pheno_defined - mt.mean_pheno_defined)
-    eigenvalues, scores, _ = hl.pca(mt.pheno_norm, compute_loadings=False)
-    print('Eigenvalues: {}'.format(eigenvalues))
-    ht = scores.checkpoint(scores_ht_path, overwrite)
-
-    mt = hl.read_matrix_table(input_mt_path)
-    if data_type == 'icd':
-        mt = mt.annotate_cols(fraction_called=hl.agg.fraction(mt.primary_codes))
-        ht = ht.annotate(fraction_called=mt.cols()[ht.key].fraction_called)
-    else:
-        mt = mt.annotate_cols(fraction_called=hl.agg.fraction(hl.is_defined(mt.both_sexes)))
-        ht = ht.annotate(**mt.cols()[ht.key].both_sexes_pheno, fraction_called=mt.cols()[ht.key].fraction_called)
-    ht = ht.transmute(**{'PC' + str(i + 1): ht.scores[i] for i in range(10)})
-    ht.export(scores_ht_path.replace('.ht', '.txt.bgz'))
-
-
 def main(args):
+    hl.init(log='/load_pheno.log')
     sexes = ('both_sexes_no_sex_specific', 'females', 'males')
-    data_types = ('categorical', 'continuous')
+    data_types = ('categorical', 'continuous') #, 'biomarkers')
+
     if args.load_data:
-        pre_process_data_dictionary(pheno_description_raw_path, pheno_description_path)
-        get_codings().write(coding_ht_path, overwrite=args.overwrite)
-        load_icd_data(pre_phesant_data_path, icd_codings_path, temp_bucket).write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
-        get_full_icd_data_description(icd_codings_path).write(icd_full_codings_ht_path, args.overwrite)
-        read_covariate_data(pre_phesant_data_path).write(get_ukb_covariates_ht_path(), args.overwrite)
+        load_icd_data(get_pre_phesant_data_path(), icd_codings_ht_path, f'{temp_bucket}/{CURRENT_TRANCHE}').write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
+        read_covariate_data(get_pre_phesant_data_path()).write(get_ukb_covariates_ht_path(), args.overwrite)
 
         for sex in sexes:
-            pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userID')
+            pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userId')
             pheno_ht.write(get_ukb_pheno_ht_path(sex), overwrite=args.overwrite)
 
             pheno_ht = hl.read_table(get_ukb_pheno_ht_path(sex))
             for data_type in data_types:
                 pheno_ht_to_mt(pheno_ht, data_type).write(get_ukb_pheno_mt_path(data_type, sex), args.overwrite)
+
+            if CURRENT_TRANCHE == '100k':
+                ht = hl.import_table(get_biomarker_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userID')
+                ht = ht.checkpoint(get_biomarker_ht_path(sex), overwrite=args.overwrite)
+
+                pheno_ht_to_mt(ht, 'continuous').write(get_ukb_pheno_mt_path('biomarkers', sex), overwrite=args.overwrite)
 
             # All codings for categorical phenotypes are bools
             # pheno_types = [(int(x[0].split('_')[0]), x[1].dtype)
@@ -77,24 +53,11 @@ def main(args):
             mt = combine_datasets({sex: get_ukb_pheno_mt_path(data_type, sex) for sex in sexes},
                                   {sex: get_ukb_phesant_summary_tsv_path(sex) for sex in sexes},
                                   pheno_description_path, coding_ht_path, data_type)
+            priority_ht = hl.import_table(pheno_description_with_priority_path, impute=True, missing='')
+            priority_ht = priority_ht.filter(priority_ht.FieldID != '?')
+            priority_ht = priority_ht.key_by(FieldID=hl.int32(priority_ht.FieldID)).select('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority')
+            mt = mt.annotate_cols(**priority_ht[mt.pheno])
             mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
-
-    if args.export_data:
-        num_pcs = 20
-        for data_type in ('continuous', ):
-            cov_ht = hl.read_table(get_ukb_covariates_ht_path()).select('sex', 'age', *[f'pc{x}' for x in range(1, num_pcs + 1)])
-            cov_ht = cov_ht.annotate(sex=cov_ht.sex + 1)
-            cov_ht = cov_ht.annotate(age2=cov_ht.age ** 2,
-                                     age_sex=cov_ht.age * cov_ht.sex)
-            mt = hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full'))
-            if data_type == 'icd':
-                mt = mt.annotate_entries(any_codes=hl.any(lambda x: x, list(mt.entry.values())),
-                                         primary_or_second=mt.primary_codes | mt.secondary_codes)
-            mt = mt.annotate_entries(**cov_ht[mt.row_key])
-            hl.experimental.export_entries_by_col(mt, f'gs://ukbb-pharma-exome-analysis/pheno_{data_type}', batch_size=8, header_json_in_file=False)
-
-    # run_phenotype_missingness_pca('categorical', get_ukb_pheno_mt_path('categorical', 'full'))
-    # See gs://ukbb-pharma-exome-analysis/missingness_correlation.ipynb
 
 
 if __name__ == '__main__':
