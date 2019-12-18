@@ -11,7 +11,7 @@ def main(args):
             log=hl.utils.timestamp_path(os.path.join(tempfile.gettempdir(), 'load_results'), suffix='.log'),
             default_reference='GRCh38')
 
-    cases, controls = get_cases_and_controls_from_log(f'{args.input_dir}/result_{args.pheno}_chr10_000000001.gene.log')
+    cases, controls = get_cases_and_controls_from_log(f'{args.input_dir}/result_{args.pheno}')
 
     load_gene_data(args.input_dir, args.pheno, args.coding, args.gene_map_ht_raw_path, cases, controls, args.overwrite)
     load_variant_data(args.input_dir, args.pheno, args.coding, args.ukb_vep_ht_path, cases, controls, args.overwrite)
