@@ -63,16 +63,15 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
                          variants_per_mac_category: int = VARIANTS_PER_MAC_CATEGORY,
                          variants_per_maf_category: int = VARIANTS_PER_MAF_CATEGORY):
     mt = filter_to_autosomes(mt)
-    hq_samples = 100217  # mt.aggregate_cols(hl.agg.count_where(mt.meta.high_quality))
+    hq_samples = mt.aggregate_cols(hl.agg.count_where(mt.meta.high_quality))
     call_stats_ht = hl.read_table(ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'call_stats'))
     mt = mt.annotate_rows(call_stats=call_stats_ht[mt.row_key].qc_callstats[0])
     mt = mt.filter_rows((mt.call_stats.AN >= hq_samples * 2 * min_call_rate) &
                         (mt.call_stats.AC[1] > 0))
     mt = mt.annotate_rows(mac_category=mac_category_case_builder(mt.call_stats))
-    # category_counter = mt.aggregate_rows(hl.agg.counter(mt.mac_category))
-    # mt = mt.annotate_globals(category_counter=category_counter)
-    mt = mt.annotate_globals(category_counter={5.0: 343544, 10.0: 792088, 20.0: 476789, 1.0: 5625273, 0.99: 74394,
-                                               2.0: 1711929, 0.1: 65559, 0.01: 153733, 3.0: 868302, 4.0: 517775, 0.001: 583818})
+    category_counter = mt.aggregate_rows(hl.agg.counter(mt.mac_category))
+    print(category_counter)
+    mt = mt.annotate_globals(category_counter=category_counter)
     mt = mt.filter_rows(hl.rand_unif(0, 1) <
                         hl.cond(mt.mac_category >= 1, variants_per_mac_category, variants_per_maf_category) / mt.category_counter[mt.mac_category]
                         ).naive_coalesce(5000)
@@ -83,11 +82,10 @@ def main(args):
     hl.init(default_reference='GRCh38')
 
     if args.create_plink_file:
-        mt = prepare_mt_for_plink(get_filtered_mt(adj=True))
+        mt = prepare_mt_for_plink(get_filtered_mt(adj=True, interval_filter=True))
         mt = mt.checkpoint(get_ukb_grm_mt_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()
         ht = hl.ld_prune(mt.GT, r2=0.1)
-        ht = ht.annotate_globals(**mt.index_globals())
         ht = ht.checkpoint(get_ukb_grm_pruned_ht_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
 
@@ -113,7 +111,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--overwrite', help='Overwrite everything', action='store_true')
-    parser.add_argument('--vep', help='Overwrite everything', action='store_true')
     parser.add_argument('--create_plink_file', help='Overwrite everything', action='store_true')
     parser.add_argument('--create_gene_mapping_files', help='Overwrite everything', action='store_true')
     parser.add_argument('--slack_channel', help='Send message to Slack channel/user', default='@konradjk')

@@ -1,5 +1,6 @@
 import hail as hl
 import ukbb_qc.resources as ukb
+import ukbb_qc.utils as ukb_utils
 from .generic import *
 
 
@@ -41,15 +42,20 @@ def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
 
 def get_processed_ukb_exomes_mt(adj=False):
     mt = get_ukb_exomes_mt(adj=adj)
-    mt = mt.key_cols_by(exome_id=mt.array_id)
+    mt = mt.key_cols_by(ukbb_app_26041_id=mt.meta.ukbb_app_26041_id)
     qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
     mt = mt.annotate_rows(filters=qual_ht[mt.row_key].filters)
-    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.exome_id))
+    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.col_key))
 
 
-def get_filtered_mt(adj=False):
+def get_filtered_mt(adj=False, interval_filter=False):
     mt = get_processed_ukb_exomes_mt(adj=adj)
-    mt = mt.filter_rows(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
+    if CURRENT_TRANCHE == '100k':
+        mt = mt.filter_cols(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
+    else:
+        mt = mt.filter_cols(mt.meta.high_quality)
+    if interval_filter:
+        mt = ukb_utils.interval_qc_filter(*TRANCHE_DATA[CURRENT_TRANCHE], t=mt)
     return mt.filter_rows(hl.len(mt.filters) == 0)
 
 
