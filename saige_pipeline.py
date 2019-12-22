@@ -323,7 +323,7 @@ def main(args):
 
     num_pcs = 20
     start_time = time.time()
-    covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
+    covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex', 'batch'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 8

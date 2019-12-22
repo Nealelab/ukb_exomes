@@ -3,12 +3,12 @@ from gnomad_hail import *
 
 def annotation_case_builder(worst_csq_by_gene_canonical_expr):
     return (hl.case(missing_false=True)
-            .when(worst_csq_by_gene_canonical_expr == 'HC', 'pLoF')
-            .when(worst_csq_by_gene_canonical_expr == 'LC', 'LC')
-            .when((worst_csq_by_gene_canonical_expr == 'missense_variant') |
-                  (worst_csq_by_gene_canonical_expr == 'inframe_insertion') |
-                  (worst_csq_by_gene_canonical_expr == 'inframe_deletion'), 'missense')
-            .when(worst_csq_by_gene_canonical_expr == 'synonymous_variant', 'synonymous')
+            .when(worst_csq_by_gene_canonical_expr.lof == 'HC', 'pLoF')
+            .when(worst_csq_by_gene_canonical_expr.lof == 'LC', 'LC')
+            .when((worst_csq_by_gene_canonical_expr.most_severe_consequence == 'missense_variant') |
+                  (worst_csq_by_gene_canonical_expr.most_severe_consequence == 'inframe_insertion') |
+                  (worst_csq_by_gene_canonical_expr.most_severe_consequence == 'inframe_deletion'), 'missense')
+            .when(worst_csq_by_gene_canonical_expr.most_severe_consequence == 'synonymous_variant', 'synonymous')
             .or_missing())
 
 
