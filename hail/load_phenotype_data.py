@@ -8,6 +8,23 @@ from ukb_common import *
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
 
+def read_covariate_data(pre_phesant_data_path):
+    ht = hl.import_table(pre_phesant_data_path, impute=True, min_partitions=100, missing='', key='userId')
+    columns = {
+        'sex': 'x22001_0_0',
+        'age': 'x21022_0_0'
+    }
+    columns.update(**{f'pc{i}': f'x22009_0_{i}' for i in range(1, 41)})
+    ht = ht.select(*columns.values()).rename({v: k for k, v in columns.items()}).annotate_globals(coding_source=columns)
+    meta_ht = hl.read_table(get_ukb_exomes_meta_ht_path(CURRENT_TRANCHE))
+    batches = meta_ht.aggregate(hl.agg.counter(meta_ht.batch))
+    print(f'Found batches: {batches}')
+    batch_field = meta_ht[ht.key].batch
+    # One-hot encoding each batch (except 0)
+    ht = ht.annotate(**{f'batch_{batch}': batch_field == batch for batch in batches if batch != '0' and batch is not None})
+    return ht.annotate(age2=ht.age ** 2, age_sex=ht.age * ht.sex, age2_sex=ht.age ** 2 * ht.sex)
+
+
 def main(args):
     hl.init(log='/load_pheno.log')
     sexes = ('both_sexes_no_sex_specific', 'females', 'males')
