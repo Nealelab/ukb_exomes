@@ -74,7 +74,7 @@ def prepare_mt_for_plink(mt: hl.MatrixTable, min_call_rate: float = MIN_CALL_RAT
     mt = mt.annotate_globals(category_counter=category_counter)
     mt = mt.filter_rows(hl.rand_unif(0, 1) <
                         hl.cond(mt.mac_category >= 1, variants_per_mac_category, variants_per_maf_category) / mt.category_counter[mt.mac_category]
-                        ).naive_coalesce(5000)
+                        )
     return mt
 
 
@@ -84,6 +84,7 @@ def main(args):
     if args.create_plink_file:
         mt = prepare_mt_for_plink(get_filtered_mt(adj=True, interval_filter=True))
         mt = mt.checkpoint(get_ukb_grm_mt_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
+        mt = mt.naive_coalesce(1000).checkpoint(get_ukb_grm_mt_path(coalesced=True), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()
         ht = hl.ld_prune(mt.GT, r2=0.1)
         ht = ht.checkpoint(get_ukb_grm_pruned_ht_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
@@ -95,7 +96,7 @@ def main(args):
         mt = get_filtered_mt()
         if args.overwrite or not hl.hadoop_exists(get_ukb_samples_file_path()):
             with hl.hadoop_open(get_ukb_samples_file_path(), 'w') as f:
-                f.write('\n'.join(mt.exome_id.collect()) + '\n')
+                f.write('\n'.join(mt.ukbb_app_26041_id.collect()) + '\n')
 
     if args.create_gene_mapping_files:
         ht = hl.read_table(get_ukb_vep_path())

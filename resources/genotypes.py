@@ -4,8 +4,8 @@ import ukbb_qc.utils as ukb_utils
 from .generic import *
 
 
-def get_ukb_grm_mt_path(tranche: str = CURRENT_TRANCHE):
-    return f'{bucket}/{tranche}/misc/ukb.for_grm.mt'
+def get_ukb_grm_mt_path(tranche: str = CURRENT_TRANCHE, coalesced: bool = False):
+    return f'{bucket}/{tranche}/misc/ukb.for_grm{".coalesced" if coalesced else ""}.mt'
 
 
 def get_ukb_grm_pruned_ht_path(tranche: str = CURRENT_TRANCHE):
@@ -40,12 +40,12 @@ def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
     return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], 'vqsr')
 
 
-def get_processed_ukb_exomes_mt(adj=False):
+def get_processed_ukb_exomes_mt(adj=False, key='ukbb_app_26041_id'):
     mt = get_ukb_exomes_mt(adj=adj)
-    mt = mt.key_cols_by(ukbb_app_26041_id=mt.meta.ukbb_app_26041_id)
+    mt = mt.key_cols_by(**{key: mt.meta[key]})
     qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
     mt = mt.annotate_rows(filters=qual_ht[mt.row_key].filters)
-    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt.col_key))
+    return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt[key]))
 
 
 def get_filtered_mt(adj=False, interval_filter=False):
