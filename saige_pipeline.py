@@ -234,7 +234,8 @@ def run_saige(p: Pipeline, output_root: str, model_file: str, variance_ratio_fil
     if analysis_type == "gene":
         command += (f'--groupFile={group_file} '
                     f'--sparseSigmaFile={sparse_sigma_file} '
-                    f'--IsSingleVarinGroupTest=TRUE ')
+                    f'--IsSingleVarinGroupTest=TRUE '
+                    f'--IsOutputBETASEinBurdenTest=TRUE ')
     command += f'--IsOutputAFinCaseCtrl=TRUE 2>&1 | tee {run_saige_task.stdout}; '
     if analysis_type == 'gene':
         command += f"input_length=$(wc -l {group_file} | awk '{{print $1}}'); " \
