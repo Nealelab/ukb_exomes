@@ -8,7 +8,8 @@ def get_ukb_phesant_summary_tsv_path(sex: str = 'both_sexes_no_sex_specific'):
 
 
 def get_ukb_source_tsv_path(sex: str = 'both_sexes_no_sex_specific', tranche: str = CURRENT_TRANCHE):
-    return f'gs://phenotype_pharma/PHESANT_output/{tranche}/{TRANCHE_PHENO_DATA[tranche]}/phesant_output_combined_{sex}.tsv'
+    ext = '' if CURRENT_TRANCHE == '100k' else '.gz'
+    return f'gs://phenotype_pharma/PHESANT_output/{tranche}/{TRANCHE_PHENO_DATA[tranche]}/phesant_output_combined_{sex}.tsv{ext}'
 
 
 def get_pre_phesant_data_path(tranche: str = CURRENT_TRANCHE):

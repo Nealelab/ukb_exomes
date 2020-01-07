@@ -35,7 +35,8 @@ def main(args):
         read_covariate_data(get_pre_phesant_data_path()).write(get_ukb_covariates_ht_path(), args.overwrite)
 
         for sex in sexes:
-            pheno_ht = hl.import_table(get_ukb_source_tsv_path(sex), impute=True, min_partitions=100, missing='', key='userId')
+            path = get_ukb_source_tsv_path(sex)
+            pheno_ht = hl.import_table(path, impute=True, min_partitions=100, missing='', key='userId', force_bgz=path.endswith('.gz'))
             pheno_ht.write(get_ukb_pheno_ht_path(sex), overwrite=args.overwrite)
 
             pheno_ht = hl.read_table(get_ukb_pheno_ht_path(sex))
