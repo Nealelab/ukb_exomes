@@ -4,93 +4,52 @@ __author__ = 'konradk'
 
 import time
 
-# from pipeline import *
-from hailtop import pipeline
 from ukb_exomes import *
 from ukb_common.utils.saige_pipeline import *
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
-root = f'{bucket}/data'
-ukb_for_grm_plink_path = f'{bucket}/mt/ukb.for_grm.pruned.plink'
-saige_pheno_types = {
-    'continuous': 'quantitative',
-    'biomarkers': 'quantitative',
-    'categorical': 'binary',
-    'icd': 'binary'
-}
+root = f'{bucket}/{CURRENT_TRANCHE}/results'
+ukb_for_grm_plink_path = f'{bucket}/{CURRENT_TRANCHE}/misc/ukb.for_grm.pruned.plink'
 
 MIN_CASES = 200
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:1.0'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.2'
-SCRIPT_DIR = '/ukb_exomes/hail'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:1.9'
+SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.3'
 
 
-def read_pheno_index_file(pheno_index_path: str):
-    files = {}
-    with hl.hadoop_open(pheno_index_path, 'r') as f:
-        for line in f:
-            fname, line_data = line.strip().split('\t')
-            line_data = json.loads(line_data)
-            if 'pheno' in line_data and 'coding' in line_data:
-                line_data['id'] = f'{line_data["pheno"]}-{line_data["coding"]}'
-            else:
-                line_data['id'] = line_data['icd_code']
-            files[fname] = line_data
-    return files
-
-
-def get_phenos_to_run(phenos_to_run, data_type: str, run_one: bool = False):
-    with hl.hadoop_open(f'gs://ukbb-pharma-exome-analysis/misc/phenos_{data_type}.tsv', 'r') as f:
-        header = f.readline().strip().split('\t')
-        for line in f:
-            fields = dict(zip(header, line.strip().split('\t')))
-            if data_type == 'icd':
-                if int(fields['n_cases_all']) >= MIN_CASES:
-                    phenos_to_run.add(fields['icd_code'])
-                    if run_one:
-                        break
-            else:
-                if int(fields['score']) >= 1:
-                    if data_type == 'categorical' and int(fields['n_cases']) < MIN_CASES:
-                        continue
-                    if fields['coding']:
-                        pheno = f'{fields["pheno"]}-{fields["coding"]}'
-                    else:
-                        pheno = fields['pheno']
-                    phenos_to_run.add(pheno)
-                    if run_one:
-                        break
-
-    return phenos_to_run
+def get_phenos_to_run(sex: str, limit: int = None):
+    ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
+    ht = ht.filter((ht[f'n_cases_{sex}'] >= MIN_CASES) & (ht.score >= 1)).select()
+    output = [(x.pheno, x.coding) for x in ht.collect()]
+    if limit:
+        output = output[:limit]
+    return output
 
 
 def main(args):
     hl.init(log='/tmp/saige_temp_hail.log')
     trait_type = args.trait_type
+    sex = 'both_sexes'
 
     if trait_type == 'icd':
-        # phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251'}
         phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251',
                          'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}
-        # phenos_to_run = set()
     else:
         phenos_to_run = {'50-irnt', '699-irnt', '23104-irnt'}
     if args.run_all_phenos:
-        phenos_to_run = set()
-        phenos_to_run = get_phenos_to_run(phenos_to_run, trait_type, args.local_test)
+        phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
 
     num_pcs = 20
     start_time = time.time()
-    covariates = ','.join(['sex', 'age', 'age2', 'age_sex', 'age2_sex', 'batch'] + [f'pc{x}' for x in range(1, num_pcs + 1)])
+    basic_covars = ['sex', 'age', 'age2', 'age_sex', 'age2_sex', 'batch_1', 'batch_2']
+    covariates = ','.join(basic_covars + [f'pc{x}' for x in range(1, num_pcs + 1)])
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 8
-    chromosomes = list(range(1, 23)) # + ['X', 'Y']  # 23
+    chromosomes = [1]  # list(range(1, 23)) + ['X', 'Y']
 
-    sparse_grm_root = f'{root}/tmp/sparse'
-    # sparse_grm_root = f'{old_root}/tmp/sparse'
+    sparse_grm_root = f'{root}/grm/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
 
     if args.local_test:
@@ -112,7 +71,8 @@ def main(args):
                                                (sparse_grm_extension, f'{sparse_grm_extension}.sampleIDs.txt')})
 
     pheno_export_dir = f'{root}/pheno_export_data'
-    if not args.overwrite_pheno_data:
+    phenos_already_exported = {}
+    if not args.overwrite_pheno_data and hl.hadoop_exists(pheno_export_dir):
         phenos_already_exported = {x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
     for pheno in phenos_to_run:
@@ -120,8 +80,8 @@ def main(args):
         if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
             pheno_file = p.read_input(pheno_export_path)
         else:
-            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_pheno_mt_path(trait_type),
-                                      get_ukb_covariates_ht_path(), HAIL_DOCKER_IMAGE, data_type=trait_type)
+            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_pheno_mt_path(),
+                                      HAIL_DOCKER_IMAGE, data_type=trait_type)
         pheno_exports[pheno] = pheno_file
     completed = Counter([isinstance(x, pipeline.resource.InputResourceFile) for x in pheno_exports.values()])
     logger.info(f'Exporting {completed[False]} phenos (already found {completed[True]})...')
@@ -129,7 +89,8 @@ def main(args):
 
     overwrite_null_models = args.create_null_models
     null_model_dir = f'{root}/null_glmm'
-    if not overwrite_null_models:
+    null_models_already_created = {}
+    if not overwrite_null_models and hl.hadoop_exists(null_model_dir):
         null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
@@ -166,6 +127,7 @@ def main(args):
     vcf_dir = f'{root}/vcf'
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
+    vcfs_already_created = {}
     if not overwrite_vcfs and hl.hadoop_exists(vcf_dir):
         vcfs_already_created = {x['path'] for x in hl.hadoop_ls(vcf_dir)}
     chunk_size = int(1e6)
@@ -177,7 +139,7 @@ def main(args):
             end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
             interval = f'{chromosome}:{start_pos}-{end_pos}'
             vcf_root = f'{vcf_dir}/test_{chromosome}_{str(start_pos).zfill(9)}'
-            if not overwrite_vcfs and f'{vcf_root}.{test_extension}' in vcfs_already_created:
+            if f'{vcf_root}.{test_extension}' in vcfs_already_created:
                 if use_bgen:
                     vcf_file = p.read_input_group(**{'bgen': f'{vcf_root}.bgen',
                                                      'bgen.bgi': f'{vcf_root}.bgen.bgi',
@@ -191,8 +153,8 @@ def main(args):
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
-            # if args.local_test:
-            #     break
+            if args.local_test:
+                break
         if args.local_test:
             break
 
@@ -230,8 +192,8 @@ def main(args):
                                            sparse_sigma_file=sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
                                            chrom=chromosome)
                     saige_tasks.append(saige_task)
-                # if args.local_test:
-                #     break
+                if args.local_test:
+                    break
             if args.local_test:
                 break
         load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks, HAIL_DOCKER_IMAGE)
@@ -242,6 +204,7 @@ def main(args):
     logger.info(f'Submitting: {get_tasks_from_pipeline(p)}')
     p.run(dry_run=args.dry_run, verbose=True, delete_scratch_on_exit=False)
     logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
+    # print([len(x._pretty()) for x in p.select_tasks('')])
 
 
 if __name__ == '__main__':
