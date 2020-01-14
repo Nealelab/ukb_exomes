@@ -6,6 +6,8 @@ from ukb_common import *
 from ukb_exomes import *
 
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
+pheno_directory = f'{bucket}/{CURRENT_TRANCHE}/pheno_combo_explore'
+pairwise_correlation_ht_path = f'{pheno_directory}/pairwise_correlations.ht'
 
 
 def read_covariate_data(pre_phesant_data_path):
