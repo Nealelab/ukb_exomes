@@ -1,6 +1,8 @@
 from .generic import *
 
 pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
+prescription_mapping_path = 'gs://phenotype_pharma/misc_files/ukb_prescription_mapping.tsv'
+# prescription_tsv_path = 'gs://ukb31063/ukb31063.gp_scripts.20191008.txt'  # TODO: get gp scripts file
 
 
 def get_ukb_phesant_summary_tsv_path(sex: str = 'both_sexes_no_sex_specific'):

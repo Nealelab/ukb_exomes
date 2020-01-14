@@ -36,6 +36,7 @@ def main(args):
     if args.load_data:
         load_icd_data(get_pre_phesant_data_path(), icd_codings_ht_path, f'{temp_bucket}/{CURRENT_TRANCHE}').write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
         read_covariate_data(get_pre_phesant_data_path()).write(get_ukb_covariates_ht_path(), args.overwrite)
+        load_prescription_data(prescription_tsv_path, prescription_mapping_path).write(get_ukb_pheno_mt_path('prescriptions'), args.overwrite)
 
         for sex in sexes:
             path = get_ukb_source_tsv_path(sex)
