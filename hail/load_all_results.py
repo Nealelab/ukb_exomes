@@ -35,23 +35,6 @@ def union_mts_by_tree(all_mts, temp_dir):
     return mt
 
 
-def get_pheno_annotations():
-    cont_ht = hl.read_matrix_table(get_ukb_pheno_mt_path('continuous', 'full')).cols()
-    cont_ht = cont_ht.key_by(pheno=hl.str(cont_ht.pheno), coding=cont_ht.coding)
-    cont_ht = cont_ht.select(meaning=hl.coalesce(cont_ht.both_sexes_pheno.Field,
-                                                 cont_ht.females_pheno.Field,
-                                                 cont_ht.males_pheno.Field),
-                             path=hl.coalesce(cont_ht.both_sexes_pheno.Path,
-                                              cont_ht.females_pheno.Path,
-                                              cont_ht.males_pheno.Path)
-                             )
-    icd_ht = hl.read_table(icd_codings_ht_path)
-    icd_ht = icd_ht.key_by(pheno=icd_ht.coding, coding='')
-    icd_ht = icd_ht.select(meaning=icd_ht.short_meaning, path=icd_ht.meaning)
-    pheno_ht = cont_ht.union(icd_ht)
-    return pheno_ht
-
-
 def main(args):
     hl.init(default_reference='GRCh38')
     all_phenos = hl.hadoop_ls(results_dir)
@@ -87,7 +70,7 @@ def main(args):
             sys.exit(0)
 
         print(f'Got {len(all_gene_outputs)} HT paths...')
-        pheno_ht = get_pheno_annotations()
+        pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
         all_hts = list(map(lambda x: hl.read_table(x).select_globals(), all_gene_outputs))
         print(f'Unioning {len(all_hts)} HTs...')
         ht = all_hts[0].union(*all_hts[1:], unify=True)
@@ -130,7 +113,7 @@ def main(args):
             print(f'Would run {to_run} tasks...')
             sys.exit(0)
 
-        pheno_ht = get_pheno_annotations()
+        pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
         all_hts = list(map(lambda x: hl.read_table(x), all_variant_outputs))
         ht = all_hts[0].union(*all_hts[1:], unify=True)
         ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])

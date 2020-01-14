@@ -2,8 +2,8 @@
 
 __author__ = 'konradk'
 
-from ukb_exomes import *
 from ukb_common import *
+from ukb_exomes import *
 
 temp_bucket = 'gs://ukb-pharma-exome-analysis-temp'
 
@@ -71,11 +71,24 @@ def main(args):
             mt = combine_datasets({sex: get_ukb_pheno_mt_path(data_type, sex) for sex in sexes},
                                   {sex: get_ukb_phesant_summary_tsv_path(sex) for sex in sexes},
                                   pheno_description_path, coding_ht_path, data_type)
-            priority_ht = hl.import_table(pheno_description_with_priority_path, impute=True, missing='')
-            priority_ht = priority_ht.filter(priority_ht.FieldID != '?')
-            priority_ht = priority_ht.key_by(FieldID=hl.int32(priority_ht.FieldID)).select('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority')
-            mt = mt.annotate_cols(**priority_ht[mt.pheno])
             mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
+
+        data_types = ('categorical', 'continuous', 'prescriptions', 'icd')
+        pheno_file_dict = {data_type: hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full')) for data_type in data_types}
+        cov_ht = hl.read_table(get_ukb_covariates_ht_path())
+        mt = combine_pheno_files_multi_sex(pheno_file_dict, cov_ht)
+        priority_ht = hl.import_table(pheno_description_with_priority_path, impute=True, missing='', key='FieldID'
+                                      ).select('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority')
+        mt = mt.annotate_cols(**priority_ht[mt.pheno])
+        mt = mt.annotate_cols(
+            score=2 * (hl.int(mt.Abbvie_Priority == 'h') + hl.int(mt.Biogen_Priority == 'h') + hl.int(mt.Pfizer_Priority == 'h')) +
+                  hl.int(mt.Abbvie_Priority == 'm') + hl.int(mt.Biogen_Priority == 'm') + hl.int(mt.Pfizer_Priority == 'm'))
+        mt.write(get_ukb_pheno_mt_path(), args.overwrite)
+
+        mt = hl.read_matrix_table(get_ukb_pheno_mt_path())
+        mt.cols().export(f'{pheno_directory}/all_pheno_summary.txt.bgz')
+        # make_correlation_ht(mt).write(pairwise_correlation_ht_path, args.overwrite)
+        # hl.read_table(pairwise_correlation_ht_path).flatten().export(pairwise_correlation_ht_path.replace('.ht', '.txt.bgz'))
 
 
 if __name__ == '__main__':
