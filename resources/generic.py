@@ -14,3 +14,7 @@ TRANCHE_DATA = {
 public_bucket = 'gs://ukbb-exome-public/'
 bucket = 'gs://ukbb-pharma-exome-analysis'
 
+
+TRANCHE_POPS = {
+    '200k': {'nfe', '13'}
+}

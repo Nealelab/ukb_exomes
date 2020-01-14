@@ -30,7 +30,7 @@ def get_ukb_pheno_ht_path(sex: str = 'both_sexes_no_sex_specific', tranche: str 
     return f'{bucket}/{tranche}/{TRANCHE_PHENO_DATA[tranche]}/phenotype/ht/{sex}.ht'
 
 
-def get_ukb_pheno_mt_path(data_type: str, sex: str = 'full', tranche: str = CURRENT_TRANCHE):
+def get_ukb_pheno_mt_path(data_type: str = 'full', sex: str = 'full', tranche: str = CURRENT_TRANCHE):
     return f'{bucket}/{tranche}/{TRANCHE_PHENO_DATA[tranche]}/phenotype/{sex}/{data_type}.mt'
 
 

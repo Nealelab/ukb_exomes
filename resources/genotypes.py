@@ -37,7 +37,8 @@ def get_ukb_exomes_meta_ht_path(tranche: str = CURRENT_TRANCHE):
 
 
 def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
-    return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], 'vqsr')
+    qual_source = 'vqsr' if tranche == '100k' else 'rf'
+    return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], qual_source)
 
 
 def get_processed_ukb_exomes_mt(adj=False, key='ukbb_app_26041_id'):
@@ -48,14 +49,15 @@ def get_processed_ukb_exomes_mt(adj=False, key='ukbb_app_26041_id'):
     return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt[key]))
 
 
-def get_filtered_mt(adj=False, interval_filter=False):
+def get_filtered_mt(adj=False, interval_filter=False, tranche: str = CURRENT_TRANCHE):
     mt = get_processed_ukb_exomes_mt(adj=adj)
-    if CURRENT_TRANCHE == '100k':
+    if tranche == '100k':
         mt = mt.filter_cols(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
     else:
-        mt = mt.filter_cols(mt.meta.high_quality)
+        mt = mt.filter_cols(mt.meta.high_quality & ~mt.meta.duplicate &
+                            hl.set(TRANCHE_POPS[tranche]).contains(mt.meta.hybrid_pop))
     if interval_filter:
-        mt = ukb_utils.interval_qc_filter(*TRANCHE_DATA[CURRENT_TRANCHE], t=mt)
+        mt = ukb_utils.interval_qc_filter(*TRANCHE_DATA[tranche], t=mt)
     return mt.filter_rows(hl.len(mt.filters) == 0)
 
 
