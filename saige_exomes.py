@@ -23,7 +23,7 @@ def get_phenos_to_run(sex: str, limit: int = None):
     output = [(x.pheno, x.coding) for x in ht.collect()]
     if limit:
         output = output[:limit]
-    return output
+    return set(output)
 
 
 def main(args):
@@ -32,10 +32,11 @@ def main(args):
     sex = 'both_sexes'
 
     if trait_type == 'icd':
-        phenos_to_run = {'K519', 'K509', 'E109', 'E119', 'J459', 'I251',
-                         'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}
+        phenos_to_run = list(map(lambda x: (x, ''),
+                                 {'K519', 'K509', 'E109', 'E119', 'J459', 'I251',
+                                  'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}))
     else:
-        phenos_to_run = {'50-irnt', '699-irnt', '23104-irnt'}
+        phenos_to_run = {('50', 'irnt'), ('699', 'irnt'), ('23104', 'irnt')}
     if args.run_all_phenos:
         phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
@@ -75,12 +76,12 @@ def main(args):
     if not args.overwrite_pheno_data and hl.hadoop_exists(pheno_export_dir):
         phenos_already_exported = {x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
-    for pheno in phenos_to_run:
+    for pheno, coding in phenos_to_run:
         pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
         if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
             pheno_file = p.read_input(pheno_export_path)
         else:
-            pheno_file = export_pheno(p, pheno_export_path, pheno, get_ukb_pheno_mt_path(),
+            pheno_file = export_pheno(p, pheno_export_path, pheno, coding, get_ukb_pheno_mt_path(),
                                       HAIL_DOCKER_IMAGE, data_type=trait_type)
         pheno_exports[pheno] = pheno_file
     completed = Counter([isinstance(x, pipeline.resource.InputResourceFile) for x in pheno_exports.values()])
@@ -94,7 +95,7 @@ def main(args):
         null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
-    for pheno in phenos_to_run:
+    for pheno, coding in phenos_to_run:
         sparse_sigma_file = None
         null_glmm_root = f'{null_model_dir}/{pheno}'
         model_file_path = f'{null_glmm_root}.rda'
