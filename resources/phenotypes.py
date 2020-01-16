@@ -1,3 +1,4 @@
+import hail as hl
 from .generic import *
 
 pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
@@ -42,3 +43,7 @@ def get_ukb_covariates_ht_path(tranche: str = CURRENT_TRANCHE):
 
 def get_phenotype_summary_tsv_path(data_type: str, tranche: str = CURRENT_TRANCHE):
     return f'{bucket}/{tranche}/pheno_summary/phenos_{data_type}.tsv'
+
+
+def get_ukb_pheno_mt():
+    return hl.read_matrix_table(get_ukb_pheno_mt_path())

@@ -10,7 +10,10 @@ def main(args):
     hl.init(default_reference='GRCh38')
 
     if args.create_plink_file:
-        mt = prepare_mt_for_plink(get_filtered_mt(adj=True, interval_filter=True))
+        call_stats_ht = hl.read_table(ukb.var_annotations_ht_path(*TRANCHE_DATA[CURRENT_TRANCHE], 'call_stats'))
+        mt = get_filtered_mt(adj=True, interval_filter=True)
+        hq_samples = mt.aggregate_cols(hl.agg.count_where(mt.meta.high_quality))
+        mt = prepare_mt_for_plink(mt.annotate_rows(call_stats=call_stats_ht[mt.row_key].qc_callstats[0]), hq_samples)
         mt = mt.checkpoint(get_ukb_grm_mt_path(), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.naive_coalesce(1000).checkpoint(get_ukb_grm_mt_path(coalesced=True), _read_if_exists=not args.overwrite, overwrite=args.overwrite)
         mt = mt.unfilter_entries()

@@ -4,23 +4,24 @@ __author__ = 'konradk'
 
 import time
 
-from ukb_exomes import *
+from ukb_common import *
 from ukb_common.utils.saige_pipeline import *
+from ukb_exomes import *
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/{CURRENT_TRANCHE}/results'
-ukb_for_grm_plink_path = f'{bucket}/{CURRENT_TRANCHE}/misc/ukb.for_grm.pruned.plink'
 
 MIN_CASES = 200
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:1.9'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:2.2'
 SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.3'
 
 
 def get_phenos_to_run(sex: str, limit: int = None):
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-    ht = ht.filter((ht[f'n_cases_{sex}'] >= MIN_CASES) & (ht.score >= 1)).select()
-    output = [(x.pheno, x.coding) for x in ht.collect()]
+    ht = ht.filter((ht[f'n_cases_{sex}'] >= MIN_CASES) &
+                   ((ht.score >= 1) | (ht.data_type == 'icd'))).select('data_type')
+    output = [(x.pheno, x.coding, x.data_type) for x in ht.collect()]
     if limit:
         output = output[:limit]
     return set(output)
@@ -28,15 +29,9 @@ def get_phenos_to_run(sex: str, limit: int = None):
 
 def main(args):
     hl.init(log='/tmp/saige_temp_hail.log')
-    trait_type = args.trait_type
     sex = 'both_sexes'
 
-    if trait_type == 'icd':
-        phenos_to_run = list(map(lambda x: (x, ''),
-                                 {'K519', 'K509', 'E109', 'E119', 'J459', 'I251',
-                                  'K51', 'K50', 'E10', 'E11', 'J45', 'I25'}))
-    else:
-        phenos_to_run = {('50', 'irnt'), ('699', 'irnt'), ('23104', 'irnt')}
+    phenos_to_run = PILOT_PHENOTYPES
     if args.run_all_phenos:
         phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
@@ -48,7 +43,7 @@ def main(args):
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 8
-    chromosomes = [1]  # list(range(1, 23)) + ['X', 'Y']
+    chromosomes = list(range(1, 23)) + ['X', 'Y']
 
     sparse_grm_root = f'{root}/grm/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
@@ -65,7 +60,7 @@ def main(args):
     analysis_type = "variant" if args.single_variant_only else "gene"
     if analysis_type == "gene":
         if args.create_sparse_grm:
-            sparse_grm = create_sparse_grm(p, sparse_grm_root, ukb_for_grm_plink_path, SAIGE_DOCKER_IMAGE,
+            sparse_grm = create_sparse_grm(p, sparse_grm_root, get_ukb_grm_plink_path(), SAIGE_DOCKER_IMAGE,
                                            relatedness_cutoff, num_markers, n_threads=n_threads)
         else:
             sparse_grm = p.read_input_group(**{ext: f'{sparse_grm_root}.{ext}' for ext in
@@ -76,13 +71,14 @@ def main(args):
     if not args.overwrite_pheno_data and hl.hadoop_exists(pheno_export_dir):
         phenos_already_exported = {x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
-    for pheno, coding in phenos_to_run:
+    for pheno, coding, trait_type in phenos_to_run:
         pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
         if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
             pheno_file = p.read_input(pheno_export_path)
         else:
-            pheno_file = export_pheno(p, pheno_export_path, pheno, coding, get_ukb_pheno_mt_path(),
-                                      HAIL_DOCKER_IMAGE, data_type=trait_type)
+            pheno_task = export_pheno(p, pheno_export_path, pheno, coding, 'ukb_exomes',
+                                      HAIL_DOCKER_IMAGE, trait_type=trait_type)
+            pheno_file = pheno_task.out
         pheno_exports[pheno] = pheno_file
     completed = Counter([isinstance(x, pipeline.resource.InputResourceFile) for x in pheno_exports.values()])
     logger.info(f'Exporting {completed[False]} phenos (already found {completed[True]})...')
@@ -95,7 +91,7 @@ def main(args):
         null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
-    for pheno, coding in phenos_to_run:
+    for pheno, coding, trait_type in phenos_to_run:
         sparse_sigma_file = None
         null_glmm_root = f'{null_model_dir}/{pheno}'
         model_file_path = f'{null_glmm_root}.rda'
@@ -110,7 +106,7 @@ def main(args):
         else:
             if args.skip_any_null_models: continue
             fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_exports[pheno], pheno, trait_type, covariates,
-                                          ukb_for_grm_plink_path, SAIGE_DOCKER_IMAGE,
+                                          get_ukb_grm_plink_path(), SAIGE_DOCKER_IMAGE,
                                           sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
                                           n_threads=n_threads)
             model_file = fit_null_task.null_glmm.rda
@@ -150,7 +146,8 @@ def main(args):
                                                      'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
                 group_file = p.read_input(f'{vcf_root}.gene.txt')
             else:
-                vcf_task = extract_vcf_from_mt(p, vcf_root, HAIL_DOCKER_IMAGE, interval=interval, export_bgen=use_bgen)
+                vcf_task = extract_vcf_from_mt(p, vcf_root, HAIL_DOCKER_IMAGE, interval=interval, export_bgen=use_bgen,
+                                               gene_map_ht_path=get_ukb_gene_map_ht_path())
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
@@ -165,6 +162,7 @@ def main(args):
     result_dir = f'{root}/result'
     overwrite_results = args.overwrite_results
     for i, pheno in enumerate(phenos_to_run):
+        pheno, coding, trait_type = pheno
         if pheno not in null_models: continue
         if not i % 10:
             n_jobs = dict(Counter(map(lambda x: x.name, p.select_tasks("")))).get("run_saige", 0)
@@ -192,20 +190,22 @@ def main(args):
                                            SAIGE_DOCKER_IMAGE, group_file=group_file,
                                            sparse_sigma_file=sparse_sigma_file, trait_type=trait_type, use_bgen=use_bgen,
                                            chrom=chromosome)
+                    saige_task.attributes.update({'interval': interval, 'pheno': pheno, 'coding': coding, 'trait_type': trait_type})
                     saige_tasks.append(saige_task)
                 if args.local_test:
                     break
             if args.local_test:
                 break
-        load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks, HAIL_DOCKER_IMAGE)
+        load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks, get_ukb_vep_path(), HAIL_DOCKER_IMAGE,
+                               gene_map_path=get_ukb_gene_map_ht_path(post_processed=False))
         if args.limit and n_jobs >= args.limit:
             break
 
     logger.info(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
     logger.info(f'Submitting: {get_tasks_from_pipeline(p)}')
+    logger.info(f"Total size: {sum([len(x._pretty()) for x in p.select_tasks('')])}")
     p.run(dry_run=args.dry_run, verbose=True, delete_scratch_on_exit=False)
     logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
-    # print([len(x._pretty()) for x in p.select_tasks('')])
 
 
 if __name__ == '__main__':
@@ -221,7 +221,6 @@ if __name__ == '__main__':
     parser.add_argument('--single_variant_only', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
-    parser.add_argument('--trait_type', help='Run single variant SAIGE')
     parser.add_argument('--limit', help='Run single variant SAIGE', type=int)
     parser.add_argument('--run_all_phenos', help='Dry run only', action='store_true')
     parser.add_argument('--dry_run', help='Dry run only', action='store_true')
