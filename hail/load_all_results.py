@@ -13,28 +13,6 @@ final_pheno_info_ht = 'gs://ukbb-pharma-exome-analysis/data/pheno_info.ht'
 final_variant_results_ht = 'gs://ukbb-pharma-exome-analysis/data/variant_results.ht'
 
 
-def union_mts_by_tree(all_mts, temp_dir):
-    chunk_size = int(len(all_mts) ** 0.5) + 1
-    outer_mts = []
-    for i in range(chunk_size):
-        if i * chunk_size >= len(all_mts): break
-        mt = all_mts[i * chunk_size]
-        for j in range(1, chunk_size):
-            if i * chunk_size + j >= len(all_mts): break
-            # try:
-            mt = mt.union_cols(all_mts[i * chunk_size + j], row_join_type='outer')
-            # except:
-            #     print(f'problem with {i * chunk_size} and {i * chunk_size + j}')
-            #     mt.describe()
-            #     all_mts[i * chunk_size + j].describe()
-            #     sys.exit(1)
-        outer_mts.append(mt.checkpoint(f'{temp_dir}/temp_output_{i}.mt', overwrite=True))
-    mt = outer_mts[0]
-    for next_mt in outer_mts[1:]:
-        mt = mt.union_cols(next_mt, row_join_type='outer')
-    return mt
-
-
 def main(args):
     hl.init(default_reference='GRCh38')
     all_phenos = hl.hadoop_ls(results_dir)
