@@ -28,6 +28,24 @@ def read_covariate_data(pre_phesant_data_path):
     return ht.annotate(age2=ht.age ** 2, age_sex=ht.age * ht.sex, age2_sex=ht.age ** 2 * ht.sex)
 
 
+def extract_mt_by_type(ht: hl.Table, value_type = hl.expr.Int32Expression, data_type = 'categorical', source = 'biogen'):
+    columns = [x[0] for x in list(ht.row_value.items()) if isinstance(x[1], value_type)]
+    ht2 = ht.select(values=[hl.struct(value=hl.float64(ht[x])) for x in columns]).annotate_globals(
+        columns=hl.map(lambda x: hl.struct(pheno=x, coding=source, data_type=data_type), hl.literal(columns)))
+    return ht2._unlocalize_entries('values', 'columns', ['pheno', 'coding'])
+
+
+def load_custom_data():
+    ht = hl.import_table('gs://phenotype_pharma/custom_phenos/new_phenos_BIOGEN.csv',
+                         impute=True, delimiter=',', quote='"', missing="", key='UKBB_ID').rename({"UKBB_ID": 'userId'})
+    ht = ht.annotate(Fluid_intelligence_score_BI=hl.float64(ht.Fluid_intelligence_score_BI),
+                     Touchscreen_duration_BI=hl.float64(ht.Touchscreen_duration_BI))
+
+    mt = extract_mt_by_type(ht, hl.expr.Int32Expression, data_type='categorical')
+    mt2 = extract_mt_by_type(ht, hl.expr.Float64Expression, data_type='continuous')
+    return mt.union_cols(mt2)
+
+
 def main(args):
     hl.init(log='/load_pheno.log')
     sexes = ('both_sexes_no_sex_specific', 'females', 'males')
@@ -36,7 +54,8 @@ def main(args):
     if args.load_data:
         load_icd_data(get_pre_phesant_data_path(), icd_codings_ht_path, f'{temp_bucket}/{CURRENT_TRANCHE}').write(get_ukb_pheno_mt_path('icd', 'full'), args.overwrite)
         read_covariate_data(get_pre_phesant_data_path()).write(get_ukb_covariates_ht_path(), args.overwrite)
-        load_prescription_data(prescription_tsv_path, prescription_mapping_path).write(get_ukb_pheno_mt_path('prescriptions'), args.overwrite)
+        # load_prescription_data(prescription_tsv_path, prescription_mapping_path).write(get_ukb_pheno_mt_path('prescriptions'), args.overwrite)
+        load_custom_data().write(get_ukb_pheno_mt_path('custom', 'full'), args.overwrite)
 
         for sex in sexes:
             path = get_ukb_source_tsv_path(sex)
@@ -76,8 +95,8 @@ def main(args):
                                   {sex: get_ukb_phesant_summary_tsv_path(sex) for sex in sexes},
                                   pheno_description_path, coding_ht_path, data_type)
             mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
-
-        data_types = ('categorical', 'continuous', 'prescriptions', 'icd')
+        # TODO: rerun to combine custom in
+        data_types = ('categorical', 'continuous', 'prescriptions', 'icd', 'custom')
         pheno_file_dict = {data_type: hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full')) for data_type in data_types}
         cov_ht = hl.read_table(get_ukb_covariates_ht_path())
         mt = combine_pheno_files_multi_sex(pheno_file_dict, cov_ht)

@@ -7,10 +7,10 @@ from ukb_exomes import *
 
 bucket = 'gs://ukbb-pharma-exome-analysis'
 temp_bucket = 'gs://ukbb-pharma-exome-analysis-temp'
-results_dir = 'gs://ukbb-pharma-exome-analysis/data/result/'
-final_gene_results_ht = 'gs://ukbb-pharma-exome-analysis/data/results.ht'
-final_pheno_info_ht = 'gs://ukbb-pharma-exome-analysis/data/pheno_info.ht'
-final_variant_results_ht = 'gs://ukbb-pharma-exome-analysis/data/variant_results.ht'
+results_dir = f'{bucket}/data/result/'
+final_gene_results_ht = f'{bucket}/data/results.ht'
+final_pheno_info_ht = f'{bucket}/data/pheno_info.ht'
+final_variant_results_ht = f'{bucket}/data/variant_results.ht'
 
 
 def main(args):
