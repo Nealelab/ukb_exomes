@@ -13,28 +13,32 @@ root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
 MIN_CASES = 200
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:2.2'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:3.5'
 SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.3'
+QQ_DOCKER_IMAGE = 'konradjk/saige_qq:0.2'
 
 
-def get_phenos_to_run(sex: str, limit: int = None):
+def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False):
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
     ht = ht.filter((ht[f'n_cases_{sex}'] >= MIN_CASES) &
                    ((ht.score >= 1) | (ht.data_type == 'icd'))).select('data_type')
-    output = [(x.pheno, x.coding, x.data_type) for x in ht.collect()]
+    output = {(x.pheno, x.coding, x.data_type) for x in ht.collect()}
+
+    if pilot:
+        output = output.intersection(PILOT_PHENOTYPES)
     if limit:
-        output = output[:limit]
-    return set(output)
+        output = set(sorted(output)[:limit])
+    return output
 
 
 def main(args):
     hl.init(log='/tmp/saige_temp_hail.log')
     sex = 'both_sexes'
 
-    phenos_to_run = PILOT_PHENOTYPES
-    if args.run_all_phenos:
-        phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None)
+    phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None, pilot=not args.run_all_phenos)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
+    if len(phenos_to_run) <= 20:
+        logger.info(phenos_to_run)
 
     num_pcs = 20
     start_time = time.time()
@@ -52,7 +56,7 @@ def main(args):
         backend = pipeline.LocalBackend(gsa_key_file='/Users/konradk/.hail/ukb_exomes.json')
     else:
         backend = pipeline.BatchBackend(billing_project='ukb_pharma')
-    p = pipeline.Pipeline(name='saige', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
+    p = pipeline.Pipeline(name='saige_exomes', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
                  default_storage='500Mi', default_cpu=n_threads)
 
@@ -71,15 +75,15 @@ def main(args):
     if not args.overwrite_pheno_data and hl.hadoop_exists(pheno_export_dir):
         phenos_already_exported = {x['path'] for x in hl.hadoop_ls(pheno_export_dir)}
     pheno_exports = {}
-    for pheno, coding, trait_type in phenos_to_run:
-        pheno_export_path = f'{pheno_export_dir}/{pheno}.tsv'
+    for pheno_coding_trait in phenos_to_run:
+        pheno, coding, trait_type = pheno_coding_trait
+        pheno_export_path = f'{pheno_export_dir}/{trait_type}-{pheno}-{coding}.tsv'
         if not args.overwrite_pheno_data and pheno_export_path in phenos_already_exported:
             pheno_file = p.read_input(pheno_export_path)
         else:
-            pheno_task = export_pheno(p, pheno_export_path, pheno, coding, 'ukb_exomes',
-                                      HAIL_DOCKER_IMAGE, trait_type=trait_type)
+            pheno_task = export_pheno(p, pheno_export_path, pheno, coding, trait_type, 'ukb_exomes', HAIL_DOCKER_IMAGE)
             pheno_file = pheno_task.out
-        pheno_exports[pheno] = pheno_file
+        pheno_exports[pheno_coding_trait] = pheno_file
     completed = Counter([isinstance(x, pipeline.resource.InputResourceFile) for x in pheno_exports.values()])
     logger.info(f'Exporting {completed[False]} phenos (already found {completed[True]})...')
 
@@ -91,9 +95,10 @@ def main(args):
         null_models_already_created = {x['path'] for x in hl.hadoop_ls(null_model_dir)}
     null_models = {}
 
-    for pheno, coding, trait_type in phenos_to_run:
+    for pheno_coding_trait in phenos_to_run:
+        pheno, coding, trait_type = pheno_coding_trait
         sparse_sigma_file = None
-        null_glmm_root = f'{null_model_dir}/{pheno}'
+        null_glmm_root = f'{null_model_dir}/{trait_type}-{pheno}-{coding}'
         model_file_path = f'{null_glmm_root}.rda'
         variance_ratio_file_path = f'{null_glmm_root}.{analysis_type}.varianceRatio.txt'
         sparse_sigma_file_path = variance_ratio_file_path + sparse_grm_extension.replace("GRM", "Sigma")
@@ -105,15 +110,16 @@ def main(args):
             if analysis_type == 'gene': sparse_sigma_file = p.read_input(sparse_sigma_file_path)
         else:
             if args.skip_any_null_models: continue
-            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_exports[pheno], pheno, trait_type, covariates,
+            fit_null_task = fit_null_glmm(p, null_glmm_root, pheno_exports[pheno_coding_trait], trait_type, covariates,
                                           get_ukb_grm_plink_path(), SAIGE_DOCKER_IMAGE,
                                           sparse_grm=sparse_grm, sparse_grm_extension=sparse_grm_extension,
                                           n_threads=n_threads)
+            fit_null_task.attributes['pheno'] = pheno
             model_file = fit_null_task.null_glmm.rda
             variance_ratio_file = fit_null_task.null_glmm[f'{analysis_type}.varianceRatio.txt']
             if analysis_type == 'gene': sparse_sigma_file = fit_null_task.null_glmm[
                 f'{analysis_type}.varianceRatio.txt{sparse_grm_extension.replace("GRM", "Sigma")}']
-        null_models[pheno] = (model_file, variance_ratio_file, sparse_sigma_file)
+        null_models[pheno_coding_trait] = (model_file, variance_ratio_file, sparse_sigma_file)
 
     completed = Counter([type(x[0]) == pipeline.resource.InputResourceFile for x in null_models.values()])
     logger.info(f'Running {completed[False]} null models (already found {completed[True]})...')
@@ -161,19 +167,19 @@ def main(args):
 
     result_dir = f'{root}/result'
     overwrite_results = args.overwrite_results
-    for i, pheno in enumerate(phenos_to_run):
-        pheno, coding, trait_type = pheno
-        if pheno not in null_models: continue
+    for i, pheno_coding_trait in enumerate(phenos_to_run):
+        if pheno_coding_trait not in null_models: continue
+        pheno, coding, trait_type = pheno_coding_trait
         if not i % 10:
-            n_jobs = dict(Counter(map(lambda x: x.name, p.select_tasks("")))).get("run_saige", 0)
+            n_jobs = dict(Counter(map(lambda x: x.name, p.select_tasks("")))).get("run_saige", 1)
             logger.info(f'Read {i} phenotypes ({n_jobs} new to run so far)...')
 
-        pheno_results_dir = f'{result_dir}/{pheno}'
+        pheno_results_dir = f'{result_dir}/{trait_type}-{pheno}-{coding}'
         results_already_created = {}
         if not overwrite_results and not args.skip_saige and hl.hadoop_exists(pheno_results_dir):
             results_already_created = {x['path'] for x in hl.hadoop_ls(pheno_results_dir)}
 
-        model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno]
+        model_file, variance_ratio_file, sparse_sigma_file = null_models[pheno_coding_trait]
         saige_tasks = []
         for chrom in chromosomes:
             if args.skip_saige: break
@@ -196,8 +202,15 @@ def main(args):
                     break
             if args.local_test:
                 break
-        load_results_into_hail(p, pheno_results_dir, pheno, saige_tasks, get_ukb_vep_path(), HAIL_DOCKER_IMAGE,
-                               gene_map_path=get_ukb_gene_map_ht_path(post_processed=False))
+        res_tasks = []
+        if overwrite_results or \
+                f'{pheno_results_dir}/variant_results.mt' not in results_already_created or \
+                not hl.hadoop_exists(f'{pheno_results_dir}/variant_results.mt/_SUCCESS'):
+            res_tasks.append(load_results_into_hail(p, pheno_results_dir, pheno, coding, trait_type,
+                                                    saige_tasks, get_ukb_vep_path(), HAIL_DOCKER_IMAGE,
+                                                    analysis_type=analysis_type,
+                                                    gene_map_path=get_ukb_gene_map_ht_path(post_processed=False)))
+            qq_plot_results(p, pheno_results_dir, res_tasks, HAIL_DOCKER_IMAGE, QQ_DOCKER_IMAGE)
         if args.limit and n_jobs >= args.limit:
             break
 
