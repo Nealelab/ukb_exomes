@@ -38,6 +38,16 @@ def main(args):
         gene_map_ht = post_process_gene_map_ht(gene_map_ht)
         gene_map_ht.write(get_ukb_gene_map_ht_path(), args.overwrite)
 
+    ht = hl.read_table(get_ukb_vep_path())
+    ht = process_consequences(ht)
+    ht = ht.explode(ht.vep.worst_csq_by_gene_canonical)
+    ht = ht.group_by(
+        gene=ht.vep.worst_csq_by_gene_canonical.gene_symbol,
+        consequence=annotation_case_builder(ht.vep.worst_csq_by_gene_canonical)
+    ).partition_hint(100).aggregate(
+        n_variants=hl.agg.count()
+    )
+    ht.write(get_ukb_gene_summary_ht_path(), args.overwrite)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

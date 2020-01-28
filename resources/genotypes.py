@@ -24,6 +24,10 @@ def get_ukb_gene_map_ht_path(post_processed=True, tranche: str = CURRENT_TRANCHE
     return f'{bucket}/{tranche}/misc/ukb.exomes.gene_map{"" if post_processed else ".raw"}.ht'
 
 
+def get_ukb_gene_summary_ht_path(tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/misc/ukb.exomes.gene_summary.ht'
+
+
 def get_ukb_exomes_mt_path(tranche: str = CURRENT_TRANCHE):
     return ukb.get_ukbb_data_path(*TRANCHE_DATA[tranche], hardcalls=True, split=True)
 
