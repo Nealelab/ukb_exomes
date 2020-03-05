@@ -12,15 +12,40 @@ bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:3.5'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.3'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:3.7'
+SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.1'
 QQ_DOCKER_IMAGE = 'konradjk/saige_qq:0.2'
 
 
+def get_exclusions(tranche: str = CURRENT_TRANCHE):
+    exclusions = set()
+    with hl.hadoop_open(f'{root}/exclusions_{tranche}.txt') as f:
+        for line in f:
+            pheno = line.strip().split('\t')
+            if len(pheno) == 2:
+                pheno, coding = pheno
+            else:
+                pheno = pheno[0]
+                coding = ''
+            exclusions.add((pheno, coding))
+    return exclusions
+
+
 def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False):
+    exclusions = get_exclusions()
+
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-    ht = ht.filter((ht[f'n_cases_{sex}'] >= MIN_CASES) &
-                   ((ht.score >= 1) | (ht.data_type == 'icd'))).select('data_type')
+    ht = ht.filter(
+        ~hl.set(exclusions).contains((ht.pheno, ht.coding)) &
+        (
+                hl.set({'biogen', 'abbvie', 'pfizer'}).contains(ht.coding) |
+                (
+                        (ht[f'n_cases_{sex}'] >= MIN_CASES) &
+                        ((ht.score >= 1) | (ht.data_type == 'icd')) &
+                        (ht.coding != 'raw')
+                )
+        )
+    ).select('data_type')
     output = {(x.pheno, x.coding, x.data_type) for x in ht.collect()}
 
     if pilot:
@@ -202,7 +227,7 @@ def main(args):
             if args.local_test:
                 break
         res_tasks = []
-        if overwrite_results or \
+        if overwrite_results or args.overwrite_hail_results or \
                 f'{pheno_results_dir}/variant_results.mt' not in results_already_created or \
                 not hl.hadoop_exists(f'{pheno_results_dir}/variant_results.mt/_SUCCESS'):
             res_tasks.append(load_results_into_hail(p, pheno_results_dir, pheno, coding, trait_type,
@@ -216,7 +241,7 @@ def main(args):
     logger.info(f'Setup took: {time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))}')
     logger.info(f'Submitting: {get_tasks_from_pipeline(p)}')
     logger.info(f"Total size: {sum([len(x._pretty()) for x in p.select_tasks('')])}")
-    p.run(dry_run=args.dry_run, verbose=True, delete_scratch_on_exit=False)
+    p.run(dry_run=args.dry_run, delete_scratch_on_exit=False)
     logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
 
 
@@ -230,6 +255,7 @@ if __name__ == '__main__':
     parser.add_argument('--create_null_models', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_vcfs', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_results', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--overwrite_hail_results', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--single_variant_only', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
