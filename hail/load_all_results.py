@@ -2,113 +2,72 @@
 
 __author__ = 'konradk'
 
+import argparse
+from collections import defaultdict
+from pprint import pprint
 from ukb_common import *
 from ukb_exomes import *
-
-bucket = 'gs://ukbb-pharma-exome-analysis'
-temp_bucket = 'gs://ukbb-pharma-exome-analysis-temp'
-results_dir = f'{bucket}/data/result/'
-final_gene_results_ht = f'{bucket}/data/results.ht'
-final_pheno_info_ht = f'{bucket}/data/pheno_info.ht'
-final_variant_results_ht = f'{bucket}/data/variant_results.ht'
 
 
 def main(args):
     hl.init(default_reference='GRCh38')
-    all_phenos = hl.hadoop_ls(results_dir)
+    col_keys = ['pheno', 'coding', 'trait_type']
+    all_phenos_dir = hl.hadoop_ls(get_results_dir())
+
+    pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
+    pheno_dict = hl.dict(pheno_ht.aggregate(hl.agg.collect(
+        (hl.struct(pheno=pheno_ht.pheno, coding=pheno_ht.coding, trait_type=pheno_ht.data_type), pheno_ht.row_value)),
+        _localize=False))
 
     if args.load_gene_results:
-        all_gene_outputs = []
-        all_gene_mt_outputs = []
-        to_run = 0
-        for directory in all_phenos:
-            # if 'E109' in directory['path'] or \
-            #         'E119' in directory['path'] or \
-            #         'K509' in directory['path'] or \
-            #         'J459' in directory['path']: continue
-            gene_results_ht_path = f'{directory["path"]}/gene_results.ht'
-            gene_results_mt_path = f'{directory["path"]}/gene_results.mt'
-            if args.skip_per_pheno:
-                if hl.hadoop_exists(f'{gene_results_mt_path}/_SUCCESS'):
-                    all_gene_outputs.append(gene_results_ht_path)
-                    all_gene_mt_outputs.append(gene_results_mt_path)
-                continue
-            if args.force_overwrite_per_pheno or not hl.hadoop_exists(gene_results_mt_path):
-                pheno = directory['path'].split('/')[-1].split('-')
-                coding = '' if len(pheno) == 1 else pheno[1]
-                pheno = pheno[0]
-                to_run += 1
-                if to_run % 10 == 0: print(to_run)
-                if args.dry_run: continue
-                load_gene_data(directory['path'], pheno, coding, get_ukb_gene_map_ht_path(False))
-            all_gene_outputs.append(gene_results_ht_path)
-            all_gene_mt_outputs.append(gene_results_mt_path)
-        if args.dry_run:
-            print(f'Would run {to_run} tasks...')
-            sys.exit(0)
+        all_gene_outputs = get_files_in_parent_directory(all_phenos_dir, 'gene_results.ht')
 
         print(f'Got {len(all_gene_outputs)} HT paths...')
-        pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-        all_hts = list(map(lambda x: hl.read_table(x).select_globals(), all_gene_outputs))
-        print(f'Unioning {len(all_hts)} HTs...')
-        ht = all_hts[0].union(*all_hts[1:], unify=True)
-        ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
-        ht.write(final_gene_results_ht, overwrite=args.overwrite)
+        all_hts = list(map(lambda x: unify_saige_burden_ht_schema(hl.read_table(x)), all_gene_outputs))
+        union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/gene_ht', '_read_if_exists').write(get_results_mt_path(extension='ht'), overwrite=args.overwrite)
 
-        all_mts = list(map(lambda x: hl.read_matrix_table(x), all_gene_mt_outputs))
-        print(f'Read {len(all_mts)} MTs...')
-        mt = union_mts_by_tree(all_mts, temp_bucket + '/gene')
-        print(f'Unioned MTs...')
-        mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
-        mt = mt.checkpoint(final_gene_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        mt.cols().write(final_pheno_info_ht, overwrite=args.overwrite)
+        row_keys = ['gene_id', 'gene_symbol', 'annotation']
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, pheno_dict, temp_bucket + '/gene', inner_mode='_read_if_exists')
+        mt = pull_out_fields_from_entries(mt, ['interval', 'markerIDs', 'markerAFs', 'total_variants'] +
+                                          [f'Nmarker_MACCate_{i}' for i in range(1, 9)], 'rows')
+        mt = mt.naive_coalesce(1000).checkpoint(get_results_mt_path(), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        mt.cols().write(get_final_pheno_info_ht_path(), overwrite=args.overwrite)
 
     if args.load_variant_results:
-        all_variant_outputs = []
-        all_variant_mt_outputs = []
-        to_run = 0
-        for directory in all_phenos:
-            # if 'K519' not in directory['path']: continue
-            variant_results_ht_path = f'{directory["path"]}/variant_results.ht'
-            variant_results_mt_path = f'{directory["path"]}/variant_results.mt'
-            if args.skip_per_pheno:
-                if hl.hadoop_exists(f'{variant_results_mt_path}/_SUCCESS'):
-                    all_variant_outputs.append(variant_results_ht_path)
-                    all_variant_mt_outputs.append(variant_results_mt_path)
-                continue
-            if args.force_overwrite_per_pheno or not hl.hadoop_exists(variant_results_mt_path):
-                pheno = directory['path'].split('/')[-1].split('-')
-                coding = '' if len(pheno) == 1 else pheno[1]
-                pheno = pheno[0]
-                to_run += 1
-                if to_run % 10 == 0: print(to_run)
-                if args.dry_run: continue
-                print(f'Loading {directory["path"]}')
-                load_variant_data(directory["path"], pheno, coding, get_ukb_vep_path(), overwrite=args.overwrite)
-            all_variant_outputs.append(variant_results_ht_path)
-            all_variant_mt_outputs.append(variant_results_mt_path)
-        if args.dry_run:
-            print(f'Would run {to_run} tasks...')
-            sys.exit(0)
+        all_variant_outputs = get_files_in_parent_directory(all_phenos_dir, 'variant_results.ht')
 
-        pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-        all_hts = list(map(lambda x: hl.read_table(x), all_variant_outputs))
-        ht = all_hts[0].union(*all_hts[1:], unify=True)
-        ht = ht.annotate(**pheno_ht[hl.struct(pheno=ht.pheno, coding=ht.coding)])
-        ht.write(final_variant_results_ht, overwrite=args.overwrite)
+        all_hts = list(map(lambda x: unify_saige_ht_variant_schema(hl.read_table(x)), all_variant_outputs))
+        print(f'Got {len(all_variant_outputs)} HT paths...')
+        union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/variant_ht', inner_mode='_read_if_exists'
+                 ).naive_coalesce(20000).write(get_results_mt_path('variant', extension='ht'), overwrite=args.overwrite)
 
-        all_mts = list(map(lambda x: hl.read_matrix_table(x), all_variant_mt_outputs))
-        mt = union_mts_by_tree(all_mts, temp_bucket + '/variant')
-        mt = mt.annotate_cols(**pheno_ht[hl.struct(pheno=mt.pheno, coding=mt.coding)])
-        mt = mt.checkpoint(final_variant_results_ht.replace('.ht', '.mt').replace(bucket, temp_bucket),
-                           overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        mt.repartition(5000, shuffle=False).write(final_variant_results_ht.replace('.ht', '.mt'), overwrite=args.overwrite)
+        row_keys = ['locus', 'alleles']
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, pheno_dict, temp_bucket + '/variant', repartition_final=20000)
+        mt = pull_out_fields_from_entries(mt, ['markerID', 'AC', 'AF', 'N', 'gene', 'annotation'], 'rows')
+        mt = pull_out_fields_from_entries(mt, ['N.Cases', 'N.Controls'], 'cols').drop('Tstat', 'varT', 'varTstar')
+        mt.write(get_results_mt_path('variant'), overwrite=args.overwrite)
 
     if args.find_errors:
-        for directory in all_phenos[:10]:
+        pheno_dirs = [x for x in all_phenos_dir if x['is_dir']]
+        all_errors = defaultdict(dict)
+        for directory in pheno_dirs:
+            _, pheno = directory['path'].rsplit('/', 1)
             all_files = hl.hadoop_ls(directory['path'])
             log_files = [x['path'] for x in all_files if x['path'].endswith('.log')]
-            hl.grep('[Ee]rror', log_files)
+            errors = hl.grep('[Ee]rror', log_files, show=False)
+            for fname, errstrings in errors.items():
+                for errstring in errstrings:
+                    if pheno not in all_errors[errstring]:
+                        all_errors[errstring][pheno] = []
+                    all_errors[errstring][pheno].append(fname)
+        pprint(dict(all_errors).keys())
+
+    if args.find_unconverged:
+        glmm_logs = hl.hadoop_ls(get_results_dir(location='null_glmm'))
+        log_files = [x['path'] for x in glmm_logs if x['path'].endswith('.log')]
+        errors = hl.grep('Large variance estimate observed in the iterations, model not converged...', log_files,
+                         show=False, max_count=6000)
+        pprint(errors)
 
 
 if __name__ == '__main__':
