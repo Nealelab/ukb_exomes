@@ -1,6 +1,7 @@
 import hail as hl
 import ukbb_qc.resources as ukb
 import ukbb_qc.utils as ukb_utils
+from gnomad_hail.utils.sparse_mt import *
 from .generic import *
 
 
@@ -45,16 +46,21 @@ def get_ukb_exomes_qual_ht_path(tranche: str = CURRENT_TRANCHE):
     return ukb.var_annotations_ht_path(*TRANCHE_DATA[tranche], qual_source)
 
 
-def get_processed_ukb_exomes_mt(adj=False, key='ukbb_app_26041_id'):
-    mt = get_ukb_exomes_mt(adj=adj)
+def get_processed_ukb_exomes_mt(adj=False, key='ukbb_app_26041_id', tranche: str = CURRENT_TRANCHE):
+    mt = get_ukb_exomes_mt(tranche=tranche, adj=adj)
     mt = mt.key_cols_by(**{key: mt.meta[key]})
-    qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path())
+    qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path(tranche))
+
+    if tranche not in ('100k', '200k'):
+        last_ref_block_end_ht = hl.read_table(ukb.last_END_positions_ht_path(*TRANCHE_DATA[tranche]))
+        mt = densify_sites(mt, last_ref_block_end_ht, qual_ht)
+
     mt = mt.annotate_rows(filters=qual_ht[mt.row_key].filters)
     return mt.filter_cols(hl.is_defined(mt.meta) & hl.is_defined(mt[key]))
 
 
 def get_filtered_mt(adj=False, interval_filter=False, tranche: str = CURRENT_TRANCHE):
-    mt = get_processed_ukb_exomes_mt(adj=adj)
+    mt = get_processed_ukb_exomes_mt(adj=adj, tranche=tranche)
     if tranche == '100k':
         mt = mt.filter_cols(~mt.meta.is_filtered & (mt.meta.hybrid_pop == '12'))
     else:
