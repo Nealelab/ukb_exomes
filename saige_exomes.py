@@ -11,7 +11,6 @@ from ukb_exomes import *
 bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
-MIN_CASES = 200
 
 HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:3.5'
 SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.3'
