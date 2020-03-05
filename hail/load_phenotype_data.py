@@ -39,11 +39,16 @@ def load_custom_data():
     ht = hl.import_table('gs://phenotype_pharma/custom_phenos/new_phenos_BIOGEN.csv',
                          impute=True, delimiter=',', quote='"', missing="", key='UKBB_ID').rename({"UKBB_ID": 'userId'})
     ht = ht.annotate(Fluid_intelligence_score_BI=hl.float64(ht.Fluid_intelligence_score_BI),
+                     Depressive_symptoms_BI=hl.float64(ht.Depressive_symptoms_BI),
                      Touchscreen_duration_BI=hl.float64(ht.Touchscreen_duration_BI))
 
     mt = extract_mt_by_type(ht, hl.expr.Int32Expression, data_type='categorical')
     mt2 = extract_mt_by_type(ht, hl.expr.Float64Expression, data_type='continuous')
-    return mt.union_cols(mt2)
+    mt = mt.union_cols(mt2)
+
+    ht = hl.import_table('gs://phenotype_pharma/custom_phenos/Custom_Phenotypes_AbbVie_02042020_Merged.csv', impute=True, delimiter=' ', missing="NA", key='userId')
+    mt_abbvie = extract_mt_by_type(ht, hl.expr.Int32Expression, data_type='categorical', source='abbvie')
+    return mt.union_cols(mt_abbvie)
 
 
 def main(args):
@@ -95,8 +100,7 @@ def main(args):
                                   {sex: get_ukb_phesant_summary_tsv_path(sex) for sex in sexes},
                                   pheno_description_path, coding_ht_path, data_type)
             mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
-        # TODO: rerun to combine custom in
-        data_types = ('categorical', 'continuous', 'prescriptions', 'icd', 'custom')
+        data_types = ('categorical', 'continuous', 'icd', 'custom')  # 'prescriptions',
         pheno_file_dict = {data_type: hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full')) for data_type in data_types}
         cov_ht = hl.read_table(get_ukb_covariates_ht_path())
         mt = combine_pheno_files_multi_sex(pheno_file_dict, cov_ht)
@@ -113,6 +117,28 @@ def main(args):
         # make_correlation_ht(mt).write(pairwise_correlation_ht_path, args.overwrite)
         # hl.read_table(pairwise_correlation_ht_path).flatten().export(pairwise_correlation_ht_path.replace('.ht', '.txt.bgz'))
 
+    ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
+    exclusions = set()
+    with hl.hadoop_open(f'{bucket}/{CURRENT_TRANCHE}/results/exclusions_200k.txt') as f:
+        for line in f:
+            pheno = line.strip().split('\t')
+            if len(pheno) == 2:
+                pheno, coding = pheno
+            else:
+                pheno = pheno[0]
+            exclusions.add((pheno, coding))
+
+    ht = ht.filter(
+        ~hl.set(exclusions).contains((ht.pheno, ht.coding)) &
+        (
+                hl.set({'biogen', 'abbvie', 'pfizer'}).contains(ht.coding) |
+                (
+                        (ht[f'n_cases_both_sexes'] >= MIN_CASES) &
+                        ((ht.score >= 1) | (ht.data_type == 'icd'))
+                )
+        )
+    )
+    ht.export(f'{pheno_directory}/all_pheno_summary_to_run.txt.bgz')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
