@@ -8,7 +8,6 @@ from ukb_common import *
 from ukb_common.utils.saige_pipeline import *
 from ukb_exomes import *
 
-bucket = 'gs://ukbb-pharma-exome-analysis'
 root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
 
