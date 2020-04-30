@@ -86,6 +86,8 @@ def main(args):
         (hl.struct(pheno=pheno_ht.pheno, coding=pheno_ht.coding, trait_type=pheno_ht.data_type), pheno_ht.row_value)),
         _localize=False))
 
+    inner_mode = 'overwrite' if args.overwrite else '_read_if_exists'
+
     if args.load_gene_results:
         all_gene_outputs = get_files_in_parent_directory(all_phenos_dir, 'gene_results.ht')
 
