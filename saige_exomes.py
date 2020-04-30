@@ -13,7 +13,7 @@ root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
 
 HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:3.7'
-SAIGE_DOCKER_IMAGE = 'konradjk/saige:0.1'
+SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.36.6'
 QQ_DOCKER_IMAGE = 'konradjk/saige_qq:0.2'
 
 
