@@ -30,7 +30,25 @@ def get_final_pheno_info_ht_path(tranche: str = CURRENT_TRANCHE):
     return f'{bucket}/{tranche}/results/pheno_info.ht'
 
 
-def get_results_mt_path(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, extension: str = 'mt'):
+def get_results_mt_path(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, extension: str = 'mt',
+                        biomarkers: bool = False):
     result_type = '' if result_type == 'gene' else 'variant_'
+    if biomarkers: result_type = f'biomarkers_{result_type}'
     return f'{bucket}/{tranche}/results/{result_type}results.{extension}'
 
+
+def get_results_timing_tsv_path(timing_type: str, trait_type: str = 'all', tranche: str = CURRENT_TRANCHE):
+    check_timing_type(timing_type)
+
+    if timing_type == 'saige':
+        check_trait_types(trait_type)
+        trait_type = f'_{trait_type}'
+    else:
+        trait_type = ''
+
+    return f'{bucket}/{tranche}/results/misc/timings_{timing_type}{trait_type}.txt'
+
+
+def get_results_timing_ht_path(timing_type: str, tranche: str = CURRENT_TRANCHE):
+    check_timing_type(timing_type)
+    return f'{bucket}/{tranche}/results/misc/timings_{timing_type}.ht'
