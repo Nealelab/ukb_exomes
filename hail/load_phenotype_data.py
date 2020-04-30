@@ -2,6 +2,7 @@
 
 __author__ = 'konradk'
 
+import argparse
 from ukb_common import *
 from ukb_exomes import *
 

@@ -1,7 +1,6 @@
-import hail as hl
 import ukbb_qc.resources as ukb
 import ukbb_qc.utils as ukb_utils
-from gnomad_hail.utils.sparse_mt import *
+from gnomad.utils.sparse_mt import *
 from .generic import *
 
 
