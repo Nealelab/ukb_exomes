@@ -29,7 +29,8 @@ def main(args):
         union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/gene_ht', '_read_if_exists').write(get_results_mt_path(extension='ht'), overwrite=args.overwrite)
 
         row_keys = ['gene_id', 'gene_symbol', 'annotation']
-        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, pheno_dict, temp_bucket + '/gene', inner_mode='_read_if_exists')
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/gene', inner_mode='_read_if_exists')
+        mt = mt.annotate_cols(**pheno_dict[mt.col_key])
         mt = pull_out_fields_from_entries(mt, ['interval', 'markerIDs', 'markerAFs', 'total_variants'] +
                                           [f'Nmarker_MACCate_{i}' for i in range(1, 9)], 'rows')
         mt = mt.naive_coalesce(1000).checkpoint(get_results_mt_path(), overwrite=args.overwrite, _read_if_exists=not args.overwrite)
@@ -44,7 +45,8 @@ def main(args):
                  ).naive_coalesce(20000).write(get_results_mt_path('variant', extension='ht'), overwrite=args.overwrite)
 
         row_keys = ['locus', 'alleles']
-        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, pheno_dict, temp_bucket + '/variant', repartition_final=20000)
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/variant', repartition_final=20000)
+        mt = mt.annotate_cols(**pheno_dict[mt.col_key])
         mt = pull_out_fields_from_entries(mt, ['markerID', 'AC', 'AF', 'N', 'gene', 'annotation'], 'rows')
         mt = pull_out_fields_from_entries(mt, ['N.Cases', 'N.Controls'], 'cols').drop('Tstat', 'varT', 'varTstar')
         mt.write(get_results_mt_path('variant'), overwrite=args.overwrite)
