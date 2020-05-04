@@ -1,14 +1,16 @@
 
 
-CURRENT_TRANCHE = '200k'
+CURRENT_TRANCHE = '300k'
 TRANCHE_PHENO_DATA = {
     '100k': 'January_2019',
-    '200k': 'November_2019'
+    '200k': 'November_2019',
+    '300k': 'April_2020'
 }
 
 TRANCHE_DATA = {
     '100k': ('regeneron', 4),
-    '200k': ('broad', 5)
+    '200k': ('broad', 5),
+    '300k': ('broad', 6)
 }
 
 public_bucket = 'gs://ukbb-exome-public/'
