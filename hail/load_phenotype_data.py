@@ -29,11 +29,12 @@ def read_covariate_data(pre_phesant_data_path):
     return ht.annotate(age2=ht.age ** 2, age_sex=ht.age * ht.sex, age2_sex=ht.age ** 2 * ht.sex)
 
 
-def extract_mt_by_type(ht: hl.Table, value_type = hl.expr.Int32Expression, data_type = 'categorical', source = 'biogen'):
+def extract_mt_by_type(ht: hl.Table, value_type = hl.expr.Int32Expression, trait_type = 'categorical', source = 'biogen'):
     columns = [x[0] for x in list(ht.row_value.items()) if isinstance(x[1], value_type)]
     ht2 = ht.select(values=[hl.struct(value=hl.float64(ht[x])) for x in columns]).annotate_globals(
-        columns=hl.map(lambda x: hl.struct(pheno=x, coding=source, data_type=data_type), hl.literal(columns)))
-    return ht2._unlocalize_entries('values', 'columns', ['pheno', 'coding'])
+        columns=hl.map(lambda x: hl.struct(trait_type=trait_type, phenocode=x, pheno_sex='both_sexes', coding=NULL_STR_KEY, modifier=source),
+                       hl.literal(columns)))
+    return ht2._unlocalize_entries('values', 'columns', PHENO_KEY_FIELDS)
 
 
 def load_custom_data():
@@ -43,12 +44,12 @@ def load_custom_data():
                      Depressive_symptoms_BI=hl.float64(ht.Depressive_symptoms_BI),
                      Touchscreen_duration_BI=hl.float64(ht.Touchscreen_duration_BI))
 
-    mt = extract_mt_by_type(ht, hl.expr.Int32Expression, data_type='categorical')
-    mt2 = extract_mt_by_type(ht, hl.expr.Float64Expression, data_type='continuous')
+    mt = extract_mt_by_type(ht, hl.expr.Int32Expression, trait_type='categorical')
+    mt2 = extract_mt_by_type(ht, hl.expr.Float64Expression, trait_type='continuous')
     mt = mt.union_cols(mt2)
 
     ht = hl.import_table('gs://phenotype_pharma/custom_phenos/Custom_Phenotypes_AbbVie_02042020_Merged.csv', impute=True, delimiter=' ', missing="NA", key='userId')
-    mt_abbvie = extract_mt_by_type(ht, hl.expr.Int32Expression, data_type='categorical', source='abbvie')
+    mt_abbvie = extract_mt_by_type(ht, hl.expr.Int32Expression, trait_type='categorical', source='abbvie')
     return mt.union_cols(mt_abbvie)
 
 
@@ -152,6 +153,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
-    else:
-        main(args)
+        from slack_token_pkg.slack_creds import slack_token
+        with slack.slack_notifications(slack_token, args.slack_channel):
+            main(args)
