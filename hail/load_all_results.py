@@ -5,19 +5,18 @@ __author__ = 'konradk'
 import argparse
 from collections import defaultdict
 from pprint import pprint
+from gnomad.utils import slack
 from ukb_common import *
 from ukb_exomes import *
 
 
 def main(args):
-    hl.init(default_reference='GRCh38')
-    col_keys = ['pheno', 'coding', 'trait_type']
+    hl.init(default_reference='GRCh38', log='/merge_results.log')
+    col_keys = ['trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier']
     all_phenos_dir = hl.hadoop_ls(get_results_dir())
 
     pheno_ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-    pheno_dict = hl.dict(pheno_ht.aggregate(hl.agg.collect(
-        (hl.struct(pheno=pheno_ht.pheno, coding=pheno_ht.coding, trait_type=pheno_ht.data_type), pheno_ht.row_value)),
-        _localize=False))
+    pheno_dict = create_broadcast_dict(pheno_ht)
 
     inner_mode = 'overwrite' if args.overwrite else '_read_if_exists'
 
@@ -26,10 +25,10 @@ def main(args):
 
         print(f'Got {len(all_gene_outputs)} HT paths...')
         all_hts = list(map(lambda x: unify_saige_burden_ht_schema(hl.read_table(x)), all_gene_outputs))
-        union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/gene_ht', '_read_if_exists').write(get_results_mt_path(extension='ht'), overwrite=args.overwrite)
+        union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/gene_ht', inner_mode=inner_mode).write(get_results_mt_path(extension='ht'), overwrite=args.overwrite)
 
         row_keys = ['gene_id', 'gene_symbol', 'annotation']
-        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/gene', inner_mode='_read_if_exists')
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/gene', inner_mode=inner_mode)
         mt = mt.annotate_cols(**pheno_dict[mt.col_key])
         mt = pull_out_fields_from_entries(mt, ['interval', 'markerIDs', 'markerAFs', 'total_variants'] +
                                           [f'Nmarker_MACCate_{i}' for i in range(1, 9)], 'rows')
@@ -38,17 +37,16 @@ def main(args):
 
     if args.load_variant_results:
         all_variant_outputs = get_files_in_parent_directory(all_phenos_dir, 'variant_results.ht')
-
         all_hts = list(map(lambda x: unify_saige_ht_variant_schema(hl.read_table(x)), all_variant_outputs))
         print(f'Got {len(all_variant_outputs)} HT paths...')
-        union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/variant_ht', inner_mode='_read_if_exists'
-                 ).naive_coalesce(20000).write(get_results_mt_path('variant', extension='ht'), overwrite=args.overwrite)
+        # union_ht(all_hts, col_keys, pheno_dict, temp_bucket + '/variant_ht', inner_mode='_read_if_exists'
+        #          ).naive_coalesce(20000).write(get_results_mt_path('variant', extension='ht'), overwrite=args.overwrite)
 
         row_keys = ['locus', 'alleles']
-        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/variant', repartition_final=20000)
+        mt = join_pheno_hts_to_mt(all_hts, row_keys, col_keys, temp_bucket + '/variant', repartition_final=20000, inner_mode='_read_if_exists')
         mt = mt.annotate_cols(**pheno_dict[mt.col_key])
-        mt = pull_out_fields_from_entries(mt, ['markerID', 'AC', 'AF', 'N', 'gene', 'annotation'], 'rows')
-        mt = pull_out_fields_from_entries(mt, ['N.Cases', 'N.Controls'], 'cols').drop('Tstat', 'varT', 'varTstar')
+        mt = pull_out_fields_from_entries(mt, ['markerID', 'AC', 'AF', 'gene', 'annotation'], 'rows')
+        mt = pull_out_fields_from_entries(mt, ['N.Cases', 'N.Controls'], 'cols')
         mt.write(get_results_mt_path('variant'), overwrite=args.overwrite)
 
     if args.find_errors:
@@ -88,6 +86,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        from slack_token_pkg.slack_creds import slack_token
+        with slack.slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

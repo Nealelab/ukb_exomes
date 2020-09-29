@@ -1,6 +1,6 @@
 
 
-CURRENT_TRANCHE = '500k'
+CURRENT_TRANCHE = '300k'
 TRANCHE_PHENO_DATA = {
     '100k': 'January_2019',
     '200k': 'November_2019',
@@ -20,7 +20,7 @@ temp_bucket = 'gs://ukbb-pharma-exome-analysis-temp'
 
 
 TRANCHE_POPS = {
-    '200k': {'nfe', '13'}
+    '200k': {'nfe', '13'},
 }
 
 

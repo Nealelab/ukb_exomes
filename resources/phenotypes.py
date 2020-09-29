@@ -3,6 +3,8 @@ from .generic import *
 
 pheno_description_with_priority_path = 'gs://phenotype_pharma/misc_files/Data_Dictionary_Showcase_with_priority.tsv'
 prescription_mapping_path = 'gs://phenotype_pharma/misc_files/ukb_prescription_mapping.tsv'
+first_occcurrence_csv_path = 'gs://phenotype_pharma/ukb41065.csv'
+first_occcurrence_tsv_path = 'gs://phenotype_pharma/ukb41065.tsv'
 # prescription_tsv_path = 'gs://ukb31063/ukb31063.gp_scripts.20191008.txt'  # TODO: get gp scripts file
 
 
@@ -43,6 +45,10 @@ def get_ukb_covariates_ht_path(tranche: str = CURRENT_TRANCHE):
 
 def get_phenotype_summary_tsv_path(data_type: str, tranche: str = CURRENT_TRANCHE):
     return f'{bucket}/{tranche}/pheno_summary/phenos_{data_type}.tsv'
+
+
+def get_covid_data_path(wave: str = '01'):
+    return f'gs://phenotype_pharma/covid/covid19_result_wave{wave}.txt'
 
 
 def get_ukb_pheno_mt():
