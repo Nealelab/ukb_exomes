@@ -165,8 +165,7 @@ def main(args):
         chromosome = f'chr{chrom}'
         chrom_length = chrom_lengths[chromosome]
         for start_pos in range(1, chrom_length, chunk_size):
-            end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
-            interval = f'{chromosome}:{start_pos}-{end_pos}'
+            interval = get_interval(chrom_length, chromosome, chunk_size, start_pos)
             vcf_root = f'{vcf_dir}/test_{chromosome}_{str(start_pos).zfill(9)}'
             if f'{vcf_root}.{test_extension}' in vcfs_already_created:
                 if use_bgen:
@@ -179,7 +178,7 @@ def main(args):
                 group_file = p.read_input(f'{vcf_root}.gene.txt')
             else:
                 vcf_task = extract_vcf_from_mt(p, vcf_root, HAIL_DOCKER_IMAGE, interval=interval, export_bgen=use_bgen,
-                                               n_threads=32, gene_map_ht_path=get_ukb_gene_map_ht_path(), additional_args=interval)
+                                               n_threads=n_threads, gene_map_ht_path=get_ukb_gene_map_ht_path(), additional_args=interval)
                 vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
@@ -212,8 +211,7 @@ def main(args):
             chromosome = f'chr{chrom}'
             chrom_length = chrom_lengths[chromosome]
             for start_pos in range(1, chrom_length, chunk_size):
-                end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
-                interval = f'{chromosome}:{start_pos}-{end_pos}'
+                interval = get_interval(chrom_length, chromosome, chunk_size, start_pos)
                 vcf_file, group_file = vcfs[interval]
                 results_path = get_results_prefix(pheno_results_dir, pheno_key_dict, chromosome, start_pos)
                 if overwrite_results or f'{results_path}.{analysis_type}.txt' not in results_already_created:
@@ -257,6 +255,12 @@ def main(args):
     logger.info(f"Total size: {sum([len(x._pretty()) for x in p.select_jobs('')])}")
     p.run(dry_run=args.dry_run, delete_scratch_on_exit=False)
     logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
+
+
+def get_interval(chrom_length, chromosome, chunk_size, start_pos):
+    padded_chunk_size = chunk_size
+    end_pos = chrom_length if start_pos + padded_chunk_size > chrom_length else (start_pos + padded_chunk_size)
+    return f'{chromosome}:{start_pos}-{end_pos}'
 
 
 if __name__ == '__main__':
