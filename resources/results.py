@@ -88,7 +88,6 @@ def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, 
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['annotation'], result_mt['gene_id'])))
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
 		output = output.annotate_cols(lambda_gc_skato=lambda_gc)
-		output = output.key_cols_by('trait_type', 'phenocode')
 		output = output.select_cols('n_cases', 'lambda_gc_skato')
 
 	else:  # Variant Info
@@ -96,7 +95,6 @@ def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, 
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['locus'], result_mt['alleles']))) 
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
 		output = output.annotate_cols(lambda_gc_burden=lambda_gc)
-		output = output.key_cols_by('trait_type', 'phenocode')
 		output = output.select_cols('n_cases', 'lambda_gc_burden')
 
 
