@@ -57,58 +57,47 @@ def get_results_timing_ht_path(timing_type: str, tranche: str = CURRENT_TRANCHE)
     return f'{bucket}/{tranche}/results/misc/timings_{timing_type}.ht'
 
 
-def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, 
-	vep_ht_path: str = 'gs://broad-ukbb/broad.freeze_6/variant_qc/variant_annotations/vep.ht', 
-	freq_ht_path: str = 'gs://broad-ukbb/broad.freeze_6/variant_qc/variant_annotations/ukb_freq.ht', 
-	output_path: str = None, extension: str = 'txt.bgz', cutoff: float = 0.0001):
+def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, freeze: int = 6,
+	output_path: str = None, output_extension: str = 'txt.bgz', cutoff: float = 0.0001):
 
-	vep = hl.read_table(vep_ht_path)
+	vep = hl.read_table(var_annotations_ht_path(annotation_type='vep', data_source='broad', freeze=freeze))
 	vep = process_consequences(vep)
 	vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-	annt_id = (hl.case(missing_false=True)
-	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == "missense_variant", 1)
-	.when(vep.vep.worst_csq_by_gene_canonical.lof == "HC", 2)
-	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == "synonymous_variant", 4)
+	annotation = (hl.case(missing_false=True)
+	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'missense_variant', 'missense|LC')
+	.when(vep.vep.worst_csq_by_gene_canonical.lof == 'HC', 'pLoF')
+	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant', 'synonymous')
 	.or_missing())  # Create ids for different annotations.
-	vep = vep.annotate(annt_id=annt_id)
-	vep = vep.filter(hl.is_defined(vep.annt_id))
-	vep = vep.filter(vep.vep.worst_csq_by_gene_canonical.biotype == "protein_coding")
-	vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annt_id)
+	vep = vep.annotate(annotation=annotation)
+	vep = vep.filter(hl.is_defined(vep.annotation))
+	vep = vep.filter(vep.vep.worst_csq_by_gene_canonical.biotype == 'protein_coding')
+	vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annotation)
 
-	freq = hl.read_table(freq_ht_path)
-	var_af = vep.key_by('locus', 'alleles').join(freq.key_by('locus', 'alleles'))
-	var_af = var_af.select(var_af.gene_id, var_af.annt_id, AF = var_af.freq[0].AF)
+	freq = hl.read_table(var_annotations_ht_path(annotation_type='ukb_freq', data_source='broad', freeze=freeze))
+	var_af = vep.annotate(AF=freq[vep.key].freq[0].AF)
 	var_af = var_af.filter(hl.is_defined(var_af.AF))
-	sum_af = var_af.group_by(var_af.annt_id, var_af.gene_id).aggregate(caf=hl.agg.sum(var_af.AF))
+	sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(caf=hl.agg.sum(var_af.AF))
 
-
-	output_file = f'LambdaGC_AF{cutoff}_{result_type}.{extension}'
+	output_file = f'LambdaGC_AF{cutoff}_{result_type}.{output_extension}'
 
 	result_type = '' if result_type == 'gene' else 'variant_'
 	result_mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
 
 	if result_type == '':  # Gene Info
-		annt_id = (hl.case(missing_false=True)
-			.when(result_mt.annotation == "missense|LC", 1)
-			.when(result_mt.annotation == "pLoF", 2)
-			.when(result_mt.annotation == "synonymous", 4)
-			.or_missing())  # Create ids for different annotations.
-		result_mt = result_mt.annotate_rows(annt_id=annt_id)
-
 		sub_af = sum_af.filter(sum_af.caf > cutoff)
-		output = result_mt.filter_rows(~hl.is_missing(sub_af.index(result_mt['annt_id'], result_mt['gene_id'])))
-		Lambda_GC = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
-		output = output.annotate_cols(Lambda_GC_SKATO=Lambda_GC)
+		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['annotation'], result_mt['gene_id'])))
+		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
+		output = output.annotate_cols(lambda_gc_skato=lambda_gc)
 		output = output.key_cols_by('trait_type', 'phenocode')
-		output = output.select_cols("n_cases", "Lambda_GC_SKATO")
+		output = output.select_cols('n_cases', 'lambda_gc_skato')
 
 	else:  # Variant Info
 		sub_af = var_af.filter(var_af.AF > cutoff)
-		output = result_mt.filter_rows(~hl.is_missing(sub_af.index(result_mt['locus'], result_mt['alleles']))) 
-		Lambda_GC = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
-		output = output.annotate_cols(Lambda_GC_Burden=Lambda_GC)
+		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['locus'], result_mt['alleles']))) 
+		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
+		output = output.annotate_cols(lambda_gc_burden=lambda_gc)
 		output = output.key_cols_by('trait_type', 'phenocode')
-		output = output.select_cols("n_cases", "Lambda_GC_Burden")
+		output = output.select_cols('n_cases', 'lambda_gc_burden')
 
 
 
