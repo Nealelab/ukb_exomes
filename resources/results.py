@@ -57,10 +57,9 @@ def get_results_timing_ht_path(timing_type: str, tranche: str = CURRENT_TRANCHE)
     return f'{bucket}/{tranche}/results/misc/timings_{timing_type}.ht'
 
 
-def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, freeze: int = 6,
-	output_path: str = None, output_extension: str = 'txt.bgz', cutoff: float = 0.0001):
+def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
 
-	vep = hl.read_table(var_annotations_ht_path(annotation_type='vep', data_source='broad', freeze=freeze))
+	vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
 	vep = process_consequences(vep)
 	vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
 	annotation = (hl.case(missing_false=True)
@@ -69,21 +68,16 @@ def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, 
 	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant', 'synonymous')
 	.or_missing())  # Create ids for different annotations.
 	vep = vep.annotate(annotation=annotation)
-	vep = vep.filter(hl.is_defined(vep.annotation))
-	vep = vep.filter(vep.vep.worst_csq_by_gene_canonical.biotype == 'protein_coding')
+	vep = vep.filter((hl.is_defined(vep.annotation)) & (vep.vep.worst_csq_by_gene_canonical.biotype == 'protein_coding'))
 	vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annotation)
 
-	freq = hl.read_table(var_annotations_ht_path(annotation_type='ukb_freq', data_source='broad', freeze=freeze))
+	freq = hl.read_table(var_annotations_ht_path('ukb_freq', *TRANCHE_DATA[tranche]))
 	var_af = vep.annotate(AF=freq[vep.key].freq[0].AF)
-	var_af = var_af.filter(hl.is_defined(var_af.AF))
 	sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(caf=hl.agg.sum(var_af.AF))
 
-	output_file = f'LambdaGC_AF{cutoff}_{result_type}.{output_extension}'
-
-	result_type = '' if result_type == 'gene' else 'variant_'
 	result_mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
 
-	if result_type == '':  # Gene Info
+	if result_type == 'gene':  # Gene Info
 		sub_af = sum_af.filter(sum_af.caf > cutoff)
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['annotation'], result_mt['gene_id'])))
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
@@ -94,14 +88,9 @@ def get_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, 
 		sub_af = var_af.filter(var_af.AF > cutoff)
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['locus'], result_mt['alleles']))) 
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
-		output = output.annotate_cols(lambda_gc_burden=lambda_gc)
-		output = output.select_cols('n_cases', 'lambda_gc_burden')
-
-
+		output = output.annotate_cols(lambda_gc=lambda_gc)
+		output = output.select_cols('n_cases', 'lambda_gc')
 
 	output = output.cols()
-
-	if output_path is not None:
-		output.export(f'{output_path}/{output_file}')
 
 	return output
