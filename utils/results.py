@@ -4,7 +4,6 @@ from gnomad.utils.vep import process_consequences
 
 
 def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
-
 	vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
 	vep = process_consequences(vep)
 	vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
@@ -28,16 +27,11 @@ def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANC
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['annotation'], result_mt['gene_id'])))
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
 		output = output.select_cols('n_cases', lambda_gc_skato=lambda_gc)
-
 	else:  # Variant Info
 		sub_af = var_af.filter(var_af.AF > cutoff)
 		output = result_mt.filter_rows(hl.is_defined(sub_af.index(result_mt['locus'], result_mt['alleles']))) 
 		lambda_gc = hl.agg.filter(hl.is_defined(output.Pvalue), hl.methods.statgen._lambda_gc_agg(output.Pvalue))
 		output = output.select_cols('n_cases', lambda_gc=lambda_gc)
 
-
-
 	output = output.cols()
-
-
 	return output
