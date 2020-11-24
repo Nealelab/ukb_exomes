@@ -55,3 +55,4 @@ def get_results_timing_tsv_path(timing_type: str, trait_type: str = 'all', tranc
 def get_results_timing_ht_path(timing_type: str, tranche: str = CURRENT_TRANCHE):
     check_timing_type(timing_type)
     return f'{bucket}/{tranche}/results/misc/timings_{timing_type}.ht'
+
