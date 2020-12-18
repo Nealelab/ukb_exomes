@@ -10,7 +10,7 @@ def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANC
 	vep = process_consequences(vep)
 	vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
 	annotation = annotation_case_builder(vep.vep.worst_csq_by_gene_canonical)
-	vep = vep.annotate(annotation=hl.if_else(annotation == 'missense', 'missense|LC', annotation))
+	vep = vep.annotate(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(annotation), 'missense|LC', annotation))
 	vep = vep.filter((hl.is_defined(vep.annotation)) & (vep.annotation != 'non-coding'))
 	vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annotation)
 
