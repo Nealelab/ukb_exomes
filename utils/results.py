@@ -1,5 +1,7 @@
 import hail as hl
 from ukbb_qc.resources.variant_qc import var_annotations_ht_path
+from ukbb_qc.resources.basics import release_ht_path
+from ukb_common.utils.annotations import annotation_case_builder
 from gnomad.utils.vep import process_consequences
 
 
@@ -7,16 +9,12 @@ def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANC
 	vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
 	vep = process_consequences(vep)
 	vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-	annotation = (hl.case(missing_false=True)
-	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'missense_variant', 'missense|LC')
-	.when(vep.vep.worst_csq_by_gene_canonical.lof == 'HC', 'pLoF')
-	.when(vep.vep.worst_csq_by_gene_canonical.most_severe_consequence == 'synonymous_variant', 'synonymous')
-	.or_missing())  # Create ids for different annotations.
-	vep = vep.annotate(annotation=annotation)
-	vep = vep.filter((hl.is_defined(vep.annotation)) & (vep.vep.worst_csq_by_gene_canonical.biotype == 'protein_coding'))
+	annotation = annotation_case_builder(vep.vep.worst_csq_by_gene_canonical)
+	vep = vep.annotate(annotation=hl.if_else(annotation == 'missense', 'missense|LC', annotation))
+	vep = vep.filter((hl.is_defined(vep.annotation)) & (vep.annotation != 'non-coding'))
 	vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annotation)
 
-	freq = hl.read_table(var_annotations_ht_path('ukb_freq', *TRANCHE_DATA[tranche]))
+	freq = hl.read_table(release_ht_path(*TRANCHE_DATA[tranche]))
 	var_af = vep.annotate(AF=freq[vep.key].freq[0].AF)
 	sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(caf=hl.agg.sum(var_af.AF))
 
