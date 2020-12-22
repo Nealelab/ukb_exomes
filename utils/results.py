@@ -3,6 +3,7 @@ from ukbb_qc.resources.variant_qc import var_annotations_ht_path
 from ukbb_qc.resources.basics import release_ht_path
 from ukb_common.utils.annotations import annotation_case_builder
 from gnomad.utils.vep import process_consequences
+from ukb_exomes.resources.generic import *
 
 
 def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
@@ -33,3 +34,15 @@ def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANC
 
 	output = output.cols()
 	return output
+
+
+def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
+    pheno = get_ukb_pheno_mt()
+    if phenocode is not None:
+        pheno = pheno.filter_cols(hl.literal(phenocode).contains(pheno.phenocode))
+    pheno = pheno.annotate_cols(mean=hl.agg.mean(pheno.both_sexes))
+    pheno = pheno.annotate_cols(variance=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 2))
+    pheno = pheno.annotate_cols(skewness=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 3) / (pheno.variance ** 1.5),
+				kurtosis=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 4) / (pheno.variance ** 2))
+    output = pheno.select_cols('mean','variance','skewness','kurtosis').cols()
+    return output
