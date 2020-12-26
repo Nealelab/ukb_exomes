@@ -40,9 +40,10 @@ def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None)
     pheno = get_ukb_pheno_mt()
     if phenocode is not None:
         pheno = pheno.filter_cols(hl.literal(phenocode).contains(pheno.phenocode))
-    pheno = pheno.annotate_cols(mean=hl.agg.mean(pheno.both_sexes))
-    pheno = pheno.annotate_cols(variance=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 2))
-    pheno = pheno.annotate_cols(skewness=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 3) / (pheno.variance ** 1.5),
-				kurtosis=hl.agg.mean((pheno.both_sexes - pheno.mean) ** 4) / (pheno.variance ** 2))
+    pheno = pheno.annotate_cols(mean=hl.agg.mean(pheno[pheno_sex]))
+    pheno = pheno.annotate_cols(std=hl.agg.stats(pheno[pheno_sex]).stdev)
+    pheno = pheno.annotate_cols(variance=pheno.std ** 2)
+    pheno = pheno.annotate_cols(skewness=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 3) / (pheno.std ** 3),
+				kurtosis=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 4) / (pheno.std ** 4))
     output = pheno.select_cols('mean','variance','skewness','kurtosis').cols()
     return output
