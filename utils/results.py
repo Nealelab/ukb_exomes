@@ -4,6 +4,7 @@ from ukbb_qc.resources.basics import release_ht_path
 from ukb_common.utils.annotations import annotation_case_builder
 from gnomad.utils.vep import process_consequences
 from ukb_exomes.resources.generic import *
+from ukb_exomes.resources.phenotypes import *
 
 
 def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
