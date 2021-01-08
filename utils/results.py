@@ -73,6 +73,31 @@ def get_sig_cnt_mt(phenocode: list = None, gene_symbol: list = None, level: floa
         mt = mt.filter_cols(hl.literal(phenocode).contains(mt.phenocode))
     if gene_symbol is not None:
         mt = mt.filter_rows(hl.literal(gene_symbol).contains(mt.gene_symbol))
-    mt = mt.select_rows('caf', 'sig_pheno_cnt_skato', 'sig_pheno_cnt_skat', 'sig_pheno_cnt_burden')
-    mt = mt.select_cols('sig_gene_cnt_skato', 'sig_gene_cnt_skat', 'sig_gene_cnt_burden')
     return mt
+
+def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
+    gene = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
+
+    var = var.annotate_entries(var_sig=var.Pvalue < level)
+    var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
+    var = var.group_rows_by('gene', 'annotation').aggregate(var_cnt=hl.agg.sum(var.var_sig))
+    var = var.annotate_rows(gene_symbol=var.gene)
+
+    test_type = test_type.lower()
+    pvalue = 'Pvalue'
+    pvalue = 'Pvalue_SKAT' if test_type == 'skat' else pvalue
+    pvalue = 'Pvalue_Burden' if test_type == 'burden' else pvalue
+    gene = gene.annotate_entries(gene_sig=hl.if_else((hl.is_defined(gene[pvalue])) & (gene[pvalue] < level), 1, 0))
+
+    var = var.key_rows_by('gene_symbol', 'annotation')
+    gene = gene.key_rows_by('gene_symbol', 'annotation')
+
+    gene = gene.annotate_entries(var_cnt=var[gene.row_key, gene.col_key]['var_cnt'])
+    gene = gene.annotate_entries(var_sig=hl.if_else((hl.is_defined(gene.var_cnt)) & (gene.var_cnt > 0), 2, 0))
+    gene = gene.annotate_entries(var_gene_sig=gene.var_sig + gene.gene_sig)
+    gene = gene.annotate_cols(gene_var_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 3),
+                              var_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 2),
+                              gene_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 1),
+                              none_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 0))
+    return gene.cols()
