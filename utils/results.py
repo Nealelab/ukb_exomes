@@ -79,25 +79,32 @@ def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, t
     var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
     gene = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
 
+    vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+    vep = process_consequences(vep)
+    vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
+    vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id)
+
+    var = var.annotate_rows(gene_id=vep[var.row_key].gene_id)
     var = var.annotate_entries(var_sig=var.Pvalue < level)
     var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
-    var = var.group_rows_by('gene', 'annotation').aggregate(var_cnt=hl.agg.sum(var.var_sig))
+    var = var.group_rows_by('gene', 'annotation', 'gene_id').aggregate(var_cnt=hl.agg.sum(var.var_sig))
     var = var.annotate_rows(gene_symbol=var.gene)
 
     test_type = test_type.lower()
     pvalue = 'Pvalue'
     pvalue = 'Pvalue_SKAT' if test_type == 'skat' else pvalue
     pvalue = 'Pvalue_Burden' if test_type == 'burden' else pvalue
-    gene = gene.annotate_entries(gene_sig=hl.if_else((hl.is_defined(gene[pvalue])) & (gene[pvalue] < level), 1, 0))
 
-    var = var.key_rows_by('gene_symbol', 'annotation')
-    gene = gene.key_rows_by('gene_symbol', 'annotation')
+    var = var.key_rows_by('gene_id', 'gene_symbol', 'annotation')
+    gene = gene.key_rows_by('gene_id', 'gene_symbol', 'annotation')
 
     gene = gene.annotate_entries(var_cnt=var[gene.row_key, gene.col_key]['var_cnt'])
-    gene = gene.annotate_entries(var_sig=hl.if_else((hl.is_defined(gene.var_cnt)) & (gene.var_cnt > 0), 2, 0))
-    gene = gene.annotate_entries(var_gene_sig=gene.var_sig + gene.gene_sig)
-    gene = gene.annotate_cols(gene_var_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 3),
-                              var_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 2),
-                              gene_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 1),
-                              none_sig_cnt=hl.agg.count_where(gene.var_gene_sig == 0))
+    gene = gene.annotate_cols(gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0) &
+                                                                  hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)),
+                              var_sig_cnt=hl.agg.count_where((hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)) &
+                                                             (~(hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)))),
+                              gene_sig_cnt=hl.agg.count_where((hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)) &
+                                                              (~(hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)))),
+                              none_sig_cnt=hl.agg.count_where(~((hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)) |
+                                                                (hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)))))
     return gene.cols()
