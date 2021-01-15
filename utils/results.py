@@ -81,22 +81,18 @@ def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, t
 
     vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
-    vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-    vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id)
-
-    var = var.annotate_rows(gene_id=vep[var.row_key].gene_id)
-    var = var.annotate_entries(var_sig=var.Pvalue < level)
+    var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id)
+    var = var.explode_rows(var.gene_id)
     var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
-    var = var.group_rows_by('gene', 'annotation', 'gene_id').aggregate(var_cnt=hl.agg.sum(var.var_sig))
-    var = var.annotate_rows(gene_symbol=var.gene)
+    var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue<level))
 
     test_type = test_type.lower()
-    pvalue = 'Pvalue'
-    pvalue = 'Pvalue_SKAT' if test_type == 'skat' else pvalue
-    pvalue = 'Pvalue_Burden' if test_type == 'burden' else pvalue
-
-    var = var.key_rows_by('gene_id', 'gene_symbol', 'annotation')
-    gene = gene.key_rows_by('gene_id', 'gene_symbol', 'annotation')
+    if test_type == 'skat':
+        pvalue = 'Pvalue_SKAT'
+    elif test_type == 'burden':
+        pvalue = 'Pvalue_Burden'
+    else:
+        pvalue = 'Pvalue'
 
     gene = gene.annotate_entries(var_cnt=var[gene.row_key, gene.col_key]['var_cnt'])
     gene = gene.annotate_cols(gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0) &
