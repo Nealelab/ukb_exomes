@@ -1,3 +1,4 @@
+from ukbb_qc.resources.sample_qc import interval_qc_path
 from ukbb_qc.resources.variant_qc import var_annotations_ht_path
 from ukbb_qc.resources.basics import release_ht_path
 from ukb_common.utils.annotations import annotation_case_builder
@@ -104,3 +105,35 @@ def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, t
                               none_sig_cnt=hl.agg.count_where(~((hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)) |
                                                                 (hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)))))
     return gene.cols()
+
+def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
+    int_auto = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='autosomes')) # freeze = 7
+    int_sex = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='sex_chr')) # freeze = 7
+    int_xx = int_sex.select(**{'target_mean_dp': int_sex.target_mean_dp[chrom] for chrom in {'XX'}},
+                            **{'target_pct_gt_10x': int_sex.target_pct_gt_10x[chrom] for chrom in {'XX'}},
+                            **{'target_pct_gt_20x': int_sex.target_pct_gt_20x[chrom] for chrom in {'XX'}},
+                            **{'pct_samples_10x': int_sex.pct_samples_10x[chrom] for chrom in {'XX'}},
+                            **{'pct_samples_20x': int_sex.pct_samples_20x[chrom] for chrom in {'XX'}})
+    int_xy = int_sex.select(**{'target_mean_dp': int_sex.target_mean_dp[chrom] for chrom in {'XY'}},
+                            **{'target_pct_gt_10x': int_sex.target_pct_gt_10x[chrom] for chrom in {'XY'}},
+                            **{'target_pct_gt_20x': int_sex.target_pct_gt_20x[chrom] for chrom in {'XY'}},
+                            **{'pct_samples_10x': int_sex.pct_samples_10x[chrom] for chrom in {'XY'}},
+                            **{'pct_samples_20x': int_sex.pct_samples_20x[chrom] for chrom in {'XY'}})
+    int_sex = int_xx.union(int_xy)
+    int_full = int_auto.union(int_sex)
+
+    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
+    vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+    vep = process_consequences(vep)
+    # Previous processing:
+    # vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
+    # vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id)
+    # var = var.annotate_rows(gene_id=vep[var.row_key].gene_id)
+    var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id)
+    var = var.explode_rows(var.gene_id)
+    var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
+    var = var.key_rows_by('locus')
+    var = var.annotate_rows(coverage=int_full[var.row_key].target_mean_dp)
+    var = var.rows()
+    mean_coverage = var.group_by('gene_id', 'gene', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
+    return mean_coverage
