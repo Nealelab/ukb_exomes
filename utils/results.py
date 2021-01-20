@@ -109,17 +109,11 @@ def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, t
 def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     int_auto = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='autosomes'))
     int_sex = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='sex_chr'))
-    int_xx = int_sex.select(target_mean_dp=int_sex.target_mean_dp['XX'],
+    int_sex = int_sex.select(target_mean_dp=int_sex.target_mean_dp['XX'],
                             target_pct_gt_10x=int_sex.target_pct_gt_10x['XX'],
                             target_pct_gt_20x=int_sex.target_pct_gt_20x['XX'],
                             pct_samples_10x=int_sex.pct_samples_10x['XX'],
                             pct_samples_20x=int_sex.pct_samples_20x['XX'])
-    int_xy = int_sex.select(target_mean_dp=int_sex.target_mean_dp['XY'],
-                            target_pct_gt_10x=int_sex.target_pct_gt_10x['XY'],
-                            target_pct_gt_20x=int_sex.target_pct_gt_20x['XY'],
-                            pct_samples_10x=int_sex.pct_samples_10x['XY'],
-                            pct_samples_20x=int_sex.pct_samples_20x['XY'])
-    int_sex = int_xx.union(int_xy)
     int_full = int_auto.union(int_sex)
 
     var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
