@@ -61,7 +61,7 @@ def get_sig_cnt_mt(phenocode: list = None, gene_symbol: list = None, level: floa
     # Load and Combine Data
     af = get_af_info_ht(result_type='gene', tranche=tranche)
     mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
-    mt = mt.annotate_rows(caf=af[mt.gene_id, mt.annotation]['caf'])
+    mt = mt.annotate_rows(caf=af[mt.annotation, mt.gene_id]['caf'])
     # Count Significant Hits per Gene for each Test
     mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.sum(mt.Pvalue < level),
                           sig_pheno_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level),
@@ -75,6 +75,22 @@ def get_sig_cnt_mt(phenocode: list = None, gene_symbol: list = None, level: floa
     if gene_symbol is not None:
         mt = mt.filter_rows(hl.literal(gene_symbol).contains(mt.gene_symbol))
     return mt
+
+def get_sig_cnt_annt_ht(result_type: str = 'gene', test_type: str = 'skato', annotation: str = 'pLoF', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
+    mt = mt.filter_rows(mt.annotation == annotation)
+    test_type = test_type.lower()
+    if test_type == 'skat':
+        pvalue = 'Pvalue_SKAT'
+    elif test_type == 'burden':
+        pvalue = 'Pvalue_Burden'
+    else:
+        pvalue = 'Pvalue'
+    mt = mt.annotate_cols(sig_cnt=hl.agg.count_where(mt[pvalue] < level),
+                          result_type=test_type.upper(),
+                          annotation_type=annotation)
+    ht = mt.cols().select('n_cases', 'description', 'sig_cnt', 'result_type', 'annotation_type')
+    return ht
 
 def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
     var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
@@ -126,3 +142,4 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     var = var.rows()
     mean_coverage = var.group_by('gene_id', 'gene', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
     return mean_coverage
+
