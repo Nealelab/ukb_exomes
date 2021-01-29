@@ -36,18 +36,18 @@ get_ukb_data_url <- function() {
 get_freq_interval <- function(freq){
   interval = case_when(
     freq <= 1e-4  ~ '[0, 0.0001]',
-    freq <= 1e-3 & freq > 1e-4 ~ '(0.0001, 0.001]',
-    freq <= 1e-2 & freq > 1e-3 ~ '(0.001, 0.01]',
-    freq <= 1e-1 & freq > 1e-2 ~ '(0.01, 0.1]',
+    freq <= 1e-3  ~ '(0.0001, 0.001]',
+    freq <= 1e-2  ~ '(0.001, 0.01]',
+    freq <= 1e-1  ~ '(0.01, 0.1]',
     freq > 1e-1  ~ '(0.1, )',
   )
   return(interval)
 }
 
-set_freq_bins <- function(data, freq_name='AF', interval=0.001){
-  br = seq(0,max(data[,freq_name]),by=interval)
-  data$bins = cut(unlist(data[,freq_name]), breaks=br, labels=paste(head(br,-1), br[-1], sep=" - "))
-  data$bin_labels = cut(unlist(data[, freq_name]), breaks = br, labels=1:(length(br)-1))
+set_freq_bins <- function(data, freq_col='AF', interval=0.001){
+  br = seq(0,max(data[,freq_col], na.rm = T),by=interval)
+  data$bins = cut(unlist(data[,freq_col]), breaks=br, labels=paste(head(br,-1), br[-1], sep=" - "))
+  data$bin_labels = cut(unlist(data[, freq_col]), breaks = br, labels=1:(length(br)-1))
   return(data)
 }
 
@@ -64,14 +64,14 @@ check_annotation <- function(annotation){
   return(annotation)
 }
 
-match_annotation_by_freq <- function(data, annt1, annt2, freq_name='AF', interval=0.001, seed=12345){
-  d0 = set_freq_bins(data = data, freq_name = freq_name, interval = interval)
+match_annotation_by_freq <- function(data, annt1, annt2, freq_col='AF', interval=0.001, seed=12345){
+  d0 = set_freq_bins(data = data, freq_col = freq_col, interval = interval)
   annt1 = check_annotation(annt1)
   annt2 = check_annotation(annt2)
   d1 = d0[d0$annotation == annt1, ]
   d2 = d0[d0$annotation == annt2, ]
-  bin1 = d1%>%dplyr::count(bin_labels)
-  bin2 = d2%>%dplyr::count(bin_labels)
+  bin1 = d1 %>% dplyr::count(bin_labels)
+  bin2 = d2 %>% dplyr::count(bin_labels)
   n <- nrow(bin1)
   ids <- vector()
   pend <- 0
@@ -92,9 +92,20 @@ match_annotation_by_freq <- function(data, annt1, annt2, freq_name='AF', interva
  return(list(d1, sims))
 }
 
+get_matched_data <- function(data, freq_col){
+  match1 <- match_annotation_by_freq(data,  annt1 = 'mis', annt2 = 'lof', freq_col)
+  match2 <- match_annotation_by_freq(data, annt1 = 'mis', annt2 = 'syn', freq_col)
+  mis <- match1[[1]]
+  lof <- match1[[2]]
+  syn <- match2[[2]]
+  matched <- rbind(mis, lof, syn)
+  return(matched)
+}
+
 sig_cnt_summary <- function(data,sig_cnt_col='sig_cnt'){
-  sums = data[complete.cases(data),]%>%
-    group_by(annotation)%>%
+  sums = data %>%
+    filter(complete.cases(.)) %>%
+    group_by(annotation) %>%
     summarise(means=mean(get(sig_cnt_col),na.rm=TRUE),
               prop=sum(get(sig_cnt_col)>0,na.rm = T)/sum(get(sig_cnt_col)>=0,na.rm=T))
   return(sums)
@@ -104,21 +115,66 @@ print_annotation_wilcoxon_test <- function(data, test_col, annt_col){
   lof <- data[data[[annt_col]]=='pLoF',]
   mis <- data[data[[annt_col]]=='missense|LC',]
   syn <- data[data[[annt_col]]=='synonymous',]
-  test <- wilcox.test(lof[[test_col]], mis[[test_col]], alternative='greater')
+  test <- wilcox.test(lof[[test_col]], mis[[test_col]], alternative='two.sided')
   print(paste0('pLoF vs. Missense: p-value = ',test$p.value, '; test-statistic = ', test$statistic ))
-  test <- wilcox.test(lof[[test_col]], syn[[test_col]], alternative='greater')
+  test <- wilcox.test(lof[[test_col]], syn[[test_col]], alternative='two.sided')
   print(paste0('pLoF vs. Synonymous: p-value = ',test$p.value, '; test-statistic = ', test$statistic))
-  test <- wilcox.test(mis[[test_col]], syn[[test_col]], alternative='greater')
+  test <- wilcox.test(mis[[test_col]], syn[[test_col]], alternative='two.sided')
   print(paste0('Missense vs. Synonymous: p-value = ',test$p.value, '; test-statistic = ', test$statistic))
 }
 
-print_freq_sig_corr <- function(data=gene_sig, test='SKATO', freq_col='caf', sig_col='sig_cnt'){
+print_freq_sig_cor <- function(data=gene_sig, test='SKATO', freq_col='caf', sig_col='sig_cnt'){
   if( freq_col=='caf'){data <- data[data$result_type == test, ]}
-  pcor <- cor.test(unlist(data[data$annotation == 'pLoF', freq_col]), unlist(data[data$annotation == 'pLoF', sig_col]))
-  scor <- cor.test(unlist(data[data$annotation == 'synonymous', freq_col]), unlist(data[data$annotation == 'synonymous', sig_col]))
-  mcor <- cor.test(unlist(data[data$annotation == 'missense|LC', freq_col]), unlist(data[data$annotation == 'missense|LC', sig_col]))
-  cat('Correlation - CAF vs. Association Count (',test,') \n')
-  cat('Missense:', mcor$estimate, '(p-value:', mcor$p.value, ')', '\n')
-  cat('pLoF:', pcor$estimate, '(p-value:', pcor$p.value, ')', '\n')
-  cat('Synonymous:', scor$estimate, '(p-value:', scor$p.value, ')', '\n')
+  cat('*** Correlation - CAF vs. Association Count (',test,') *** \n')
+  data %>%
+    na.omit() %>%
+    group_by(annotation) %>%
+    summarise(tidy(cor.test(get(freq_col),get(sig_col))))
+  # cat('Correlation - CAF vs. Association Count (',test,') \n')
+  # cat('Missense:', mcor$estimate, '(p-value:', mcor$p.value, ')', '\n')
+  # cat('pLoF:', pcor$estimate, '(p-value:', pcor$p.value, ')', '\n')
+  # cat('Synonymous:', scor$estimate, '(p-value:', scor$p.value, ')', '\n')
+}
+
+match_gene_subset_by_caf <- function(ref_data, gene_subset, freq_col='caf', id_col='gene_id', sig_col='sig_cnt',
+                                     interval=0.01, sim_times=100, seed=12345){
+  ref_data = as.data.frame(ref_data)
+  gene_subset = as.data.frame(gene_subset)
+
+  ref_data = set_freq_bins(ref_data,freq_col, interval)
+  sub_data = ref_data[(ref_data[,id_col]%in%gene_subset[,id_col]),]
+  remain_data = ref_data[!(ref_data[,id_col]%in%gene_subset[,id_col]),]
+  bin_sum <- sub_data%>%count(bin_labels)
+
+  set.seed(seed)
+  sim_sum <- data.frame()
+  data_store <- data.frame()
+  for(k in 1:sim_times){
+    n <- nrow(bin_sum)
+    ids <- vector()
+    pend <- 0
+    for(i in n:1){
+      temp <- remain_data[remain_data$bin_labels == bin_sum[i,1],]
+      size <- bin_sum[i,2]
+      if(nrow(temp)==0){
+        pend = pend + size
+        next
+      }else{
+        id <- sample(row.names(temp),size+pend,replace = T)
+        ids <- c(ids,id)
+        pend <- 0
+      }
+    }
+    sims <- remain[ids,]
+    sums <- sims %>%
+      na.omit() %>%
+      summarise(means=mean(get(sig_col),na.rm=TRUE),
+                medians=median(get(sig_col),na.rm=TRUE),
+                props=sum(get(sig_col)>0,na.rm = T)/sum(get(sig_col)>=0,na.rm=T))
+    sums$sim <- k
+    sim_sum <- rbind(sim_sum,sums)
+    sims$sim <- k
+    data_store <- rbind(data_store,sims)
+  }
+  return(list(data_store, sim_sum))
 }

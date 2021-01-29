@@ -6,21 +6,38 @@ from gnomad.utils.vep import process_consequences
 from ukb_exomes.resources import *
 
 
-def compute_lambda_gc_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
+def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
     af = get_af_info_ht(result_type, tranche)
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
 
     if result_type == 'gene':  # Gene Info
         af = af.filter(af.caf > cutoff)
         mt = mt.filter_rows(hl.is_defined(af.index(mt['annotation'], mt['gene_id'])))
-        lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
-        mt = mt.select_cols('n_cases', lambda_gc_skato=lambda_gc)
+        if by_annotation:
+            mt = mt.select_cols('n_cases',
+                                lambda_gc_skato=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
+                                lambda_gc_skat=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
+                                lambda_gc_burden=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)),
+                                af=f'Allele Freq > {cutoff}')
+            mt = mt.annotate_cols(**{f'{annotation}_gc_skato': mt.lambda_gc_skato[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
+                                  **{f'{annotation}_gc_skat': mt.lambda_gc_skat[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
+                                  **{f'{annotation}_gc_burden': mt.lambda_gc_burden[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},)
+        else:
+            mt = mt.select_cols('n_cases',
+                                lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
+                                lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
+                                lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)),
+                                af=f'Allele Freq > {cutoff}')
     else:  # Variant Info
         af = af.filter(af.AF > cutoff)
         mt = mt.filter_rows(hl.is_defined(af.index(mt['locus'], mt['alleles'])))
-        lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
-        mt = mt.select_cols('n_cases', lambda_gc=lambda_gc)
-
+        if by_annotation:
+            lambda_gc = hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
+            mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, af=f'Allele Freq > {cutoff}')
+            mt = mt.annotate_cols(**{f'{annotation}_gc_variant': mt.lambda_gc[annotation] for annotation in ('pLoF', 'missense', 'synonymous')},)
+        else:
+            lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
+            mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, af=f'Allele Freq > {cutoff}')
     ht = mt.cols()
     return ht
 
@@ -57,39 +74,44 @@ def get_af_info_ht(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE):
         return var_af
 
 
-def get_sig_cnt_mt(phenocode: list = None, gene_symbol: list = None, level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_mt(result_type: str = 'gene', phenocode: list = None, gene_symbol: list = None, level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
     # Load and Combine Data
-    af = get_af_info_ht(result_type='gene', tranche=tranche)
-    mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
-    mt = mt.annotate_rows(caf=af[mt.annotation, mt.gene_id]['caf'])
-    # Count Significant Hits per Gene for each Test
-    mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.sum(mt.Pvalue < level),
-                          sig_pheno_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level),
-                          sig_pheno_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
-    # Count Significant Hits per Phenotype for each Test
-    mt = mt.annotate_cols(sig_gene_cnt_skato=hl.agg.sum(mt.Pvalue < level),
-                          sig_gene_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level),
-                          sig_gene_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
+    af = get_af_info_ht(result_type, tranche=tranche)
+    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))
+    if result_type == 'gene':
+        mt = mt.annotate_rows(caf=af[mt.annotation, mt.gene_id]['caf'])
+        # Count Significant Hits per Gene for each Test
+        mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.sum(mt.Pvalue < level),
+                              sig_pheno_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level),
+                              sig_pheno_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
+        # Count Significant Hits per Phenotype for each Test
+        mt = mt.annotate_cols(sig_gene_cnt_skato=hl.agg.sum(mt.Pvalue < level),
+                              sig_gene_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level),
+                              sig_gene_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
+    else:
+        mt = mt.annotate_rows(sig_pheno_cnt_var=hl.agg.sum(mt.Pvalue < level))
+        # Count Significant Hits per Phenotype for each Test
+        mt = mt.annotate_cols(sig_var_cnt=hl.agg.sum(mt.Pvalue < level))
     if phenocode is not None:
         mt = mt.filter_cols(hl.literal(phenocode).contains(mt.phenocode))
     if gene_symbol is not None:
         mt = mt.filter_rows(hl.literal(gene_symbol).contains(mt.gene_symbol))
     return mt
 
-def get_sig_cnt_annt_ht(result_type: str = 'gene', test_type: str = 'skato', annotation: str = 'pLoF', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_annt_ht(result_type: str = 'gene', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
-    mt = mt.filter_rows(mt.annotation == annotation)
-    test_type = test_type.lower()
-    if test_type == 'skat':
-        pvalue = 'Pvalue_SKAT'
-    elif test_type == 'burden':
-        pvalue = 'Pvalue_Burden'
+    if result_type == 'gene':
+        mt = mt.annotate_cols(sig_cnt_skato=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)),
+                              sig_cnt_skat=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_SKAT < level)),
+                              sig_cnt_burden=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_Burden < level)),)
+        ht = mt.cols().select('n_cases', 'description', 'sig_cnt_skato', 'sig_cnt_skat', 'sig_cnt_burden')
+        ht = ht.annotate(**{f'{annotation}_sig_cnt_skato': ht.sig_cnt_skato[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
+                         **{f'{annotation}_sig_cnt_skat': ht.sig_cnt_skat[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
+                         **{f'{annotation}_sig_cnt_burden': ht.sig_cnt_burden[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},)
     else:
-        pvalue = 'Pvalue'
-    mt = mt.annotate_cols(sig_cnt=hl.agg.count_where(mt[pvalue] < level),
-                          result_type=test_type.upper(),
-                          annotation_type=annotation)
-    ht = mt.cols().select('n_cases', 'description', 'sig_cnt', 'result_type', 'annotation_type')
+        mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)),)
+        ht = mt.cols().select('n_cases', 'description', 'sig_cnt')
+        ht = ht.annotate(**{f'{annotation}_sig_cnt': ht.sig_cnt[annotation] for annotation in ('pLoF', 'missense', 'synonymous')},)
     return ht
 
 def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):

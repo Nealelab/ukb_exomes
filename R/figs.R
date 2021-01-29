@@ -11,9 +11,17 @@ var_gene <- load_ukb_file('var_gene_comparison300k.txt.bgz')
 gene_sig$interval <- get_freq_interval(gene_sig$caf)
 var_sig$interval <- get_freq_interval(var_sig$AF)
 
+pheno_annt_gene <- melt(pheno_annt_gene[, c(1:7,11:20)], value.name="sig_cnt", id.var=colnames(pheno_annt_gene[, c(1:7,20)]))
+pheno_annt_gene$annotation <- sapply(str_split(pheno_annt_gene$variable, '_sig_cnt_'),function(x){x[[1]]})
+pheno_annt_gene$result_type <- sapply(str_split(pheno_annt_gene$variable, '_sig_cnt_'),function(x){x[[2]]})
+
+pheno_annt_var <- melt(pheno_annt_var[, c(1:7,9:12)], value.name = "sig_cnt", id.var=colnames(pheno_annt_var[, c(1:7,12)]))
+pheno_annt_var$annotation <- sapply(str_split(pheno_annt_var$variable, '_sig_cnt'),function(x){x[[1]]})
+pheno_annt_var$annotation[pheno_annt_var$annotation == 'missense'] = 'missense|LC'
+
 gene_sig$annotation <- factor(gene_sig$annotation,levels=annotation_types)
 var_sig$annotation <- factor(var_sig$annotation,levels=annotation_types)
-pheno_annt_gene$annotation <- factor(pheno_annt_gene$annotation_type,levels=annotation_types)
+pheno_annt_gene$annotation <- factor(pheno_annt_gene$annotation,levels=annotation_types)
 pheno_annt_var$annotation <- factor(pheno_annt_var$annotation,levels=annotation_types)
 
 pheno_sig$trait_type2 <- factor(pheno_sig$trait_type2, levels=trait_types)
@@ -64,9 +72,9 @@ plt <- ggplot(var_sig[!is.na(var_sig$annotation), ], aes(x = sig_pheno_cnt, colo
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, labeller = label_type)
 
-pdf('variant_association_dist.pdf', height=12, width=10)
-print(p)
-dev.off()
+# pdf('variant_association_dist.pdf', height=12, width=10)
+# print(p)
+# dev.off()
 
 var_sig0 <- var_sig[!is.na(var_sig$annotation),]
 plt1 <- var_sig0 %>%
@@ -90,7 +98,7 @@ plt2 <- var_sig0 %>%
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, scales = 'free', labeller = label_type)
 
-plt <- ggarrange(p1, p2, ncol=2)
+# plt <- ggarrange(plt1, plt2, ncol=2)
 
 # Phenotype-Level Association Count (By Gene)
 plt <- ggplot(pheno_sig, aes(x = sig_cnt, color = trait_type2, fill = trait_type2)) +
@@ -176,11 +184,11 @@ plt2 <- ggplot(gene_sig[gene_sig$sig_cnt == 0, ], aes(x = caf, color = annotatio
   annotation_color_scale + annotation_fill_scale +themes +
   facet_wrap(~result_type, nrow = 3, labeller = label_type)
 
-plt <- ggarrange(plt1, plt2, ncol = 2)
+# plt <- ggarrange(plt1, plt2, ncol = 2)
 
-
-# Correlation: CAF vs. Association Count (SKATO)
-print_freq_sig_corr()
-print_freq_sig_corr(test='SKAT')
-print_freq_sig_corr(test='Burden Test')
-print_freq_sig_corr(data = var_sig, test = 'variant', freq_col='AF', sig_col = 'sig_pheno_cnt')
+# Correlation: CAF vs. Association Count
+detach(package:plyr)
+print_freq_sig_cor()
+print_freq_sig_cor(test='SKAT')
+print_freq_sig_cor(test='Burden Test')
+print_freq_sig_cor(data = var_sig, test = 'variant', freq_col='AF', sig_col = 'sig_pheno_cnt')
