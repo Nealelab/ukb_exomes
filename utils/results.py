@@ -5,6 +5,8 @@ from ukb_common.utils.annotations import annotation_case_builder
 from gnomad.utils.vep import process_consequences
 from ukb_exomes.resources import *
 
+ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
+TESTS = ('skato', 'skat', 'burden')
 
 def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
     af = get_af_info_ht(result_type, tranche)
@@ -19,9 +21,7 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
                                 lambda_gc_skat=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
                                 lambda_gc_burden=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)),
                                 af=f'Allele Freq > {cutoff}')
-            mt = mt.annotate_cols(**{f'{annotation}_gc_skato': mt.lambda_gc_skato[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
-                                  **{f'{annotation}_gc_skat': mt.lambda_gc_skat[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
-                                  **{f'{annotation}_gc_burden': mt.lambda_gc_burden[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},)
+            mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_{test}': mt[f'lambda_gc_{test}'][annotation] for annotation in ANNOTATIONS for test in TESTS})
         else:
             mt = mt.select_cols('n_cases',
                                 lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
@@ -105,18 +105,16 @@ def get_sig_cnt_annt_ht(result_type: str = 'gene', level: float = 1e-6, tranche:
                               sig_cnt_skat=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_SKAT < level)),
                               sig_cnt_burden=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_Burden < level)),)
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt_skato', 'sig_cnt_skat', 'sig_cnt_burden')
-        ht = ht.annotate(**{f'{annotation}_sig_cnt_skato': ht.sig_cnt_skato[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
-                         **{f'{annotation}_sig_cnt_skat': ht.sig_cnt_skat[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},
-                         **{f'{annotation}_sig_cnt_burden': ht.sig_cnt_burden[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')},)
+        ht = ht.annotate(**{f'{annotation}_sig_cnt_{test}': ht[f'sig_cnt_{test}'][annotation] for annotation in ANNOTATIONS for test in TESTS})
     else:
         mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)),)
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt')
         ht = ht.annotate(**{f'{annotation}_sig_cnt': ht.sig_cnt[annotation] for annotation in ('pLoF', 'missense', 'synonymous')},)
     return ht
 
-def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
     var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
-    gene = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
+    mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
 
     vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
@@ -133,16 +131,25 @@ def compare_gene_var_sig_cnt_ht(test_type: str = 'skato', level: float = 1e-6, t
     else:
         pvalue = 'Pvalue'
 
-    gene = gene.annotate_entries(var_cnt=var[gene.row_key, gene.col_key]['var_cnt'])
-    gene = gene.annotate_cols(gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0) &
-                                                                  hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)),
-                              var_sig_cnt=hl.agg.count_where((hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)) &
-                                                             (~(hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)))),
-                              gene_sig_cnt=hl.agg.count_where((hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)) &
-                                                              (~(hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)))),
-                              none_sig_cnt=hl.agg.count_where(~((hl.is_defined(gene[pvalue]) & (gene[pvalue] < level)) |
-                                                                (hl.is_defined(gene.var_cnt) & (gene.var_cnt > 0)))))
-    return gene.cols()
+    mt = mt.annotate_entries(var_cnt=var[mt.row_key, mt.col_key]['var_cnt'])
+    mt = mt.annotate_cols(pheno_gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
+                                                                  hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)),
+                              pheno_var_sig_cnt=hl.agg.count_where((hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)) &
+                                                             (~(hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)))),
+                              pheno_gene_sig_cnt=hl.agg.count_where((hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)) &
+                                                              (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))),
+                              pheno_none_sig_cnt=hl.agg.count_where(~((hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)) |
+                                                                (hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))))
+
+    mt = mt.annotate_rows(gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
+                                                                  hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)),
+                              var_sig_cnt=hl.agg.count_where((hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)) &
+                                                             (~(hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)))),
+                              gene_sig_cnt=hl.agg.count_where((hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)) &
+                                                              (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))),
+                              none_sig_cnt=hl.agg.count_where(((hl.is_missing(mt[pvalue]) | (mt[pvalue] >= level)) &
+                                                                (hl.is_missing(mt.var_cnt) | (mt.var_cnt == 0)))))
+    return mt
 
 def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     int_auto = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='autosomes'))

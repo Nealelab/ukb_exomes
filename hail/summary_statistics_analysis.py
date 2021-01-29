@@ -46,5 +46,3 @@ var_gene = var_gene.select('n_cases', 'description', data=[(var_gene.gene_var_si
 var_gene = var_gene.transmute(sig_cnt=var_gene.data[0], cnt_type=var_gene.data[1])
 var_gene = var_gene.annotate(trait_type2=hl.if_else(var_gene.trait_type == 'icd_first_occurrence', 'icd10', var_gene.trait_type))
 var_gene.export('gs://ukbb-exome-public/summary_statistics_analysis/var_gene_comparison300k.txt.bgz')
-
-# Gene- Any significant Variant

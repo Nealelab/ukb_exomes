@@ -130,10 +130,6 @@ print_freq_sig_cor <- function(data=gene_sig, test='SKATO', freq_col='caf', sig_
     na.omit() %>%
     group_by(annotation) %>%
     summarise(tidy(cor.test(get(freq_col),get(sig_col))))
-  # cat('Correlation - CAF vs. Association Count (',test,') \n')
-  # cat('Missense:', mcor$estimate, '(p-value:', mcor$p.value, ')', '\n')
-  # cat('pLoF:', pcor$estimate, '(p-value:', pcor$p.value, ')', '\n')
-  # cat('Synonymous:', scor$estimate, '(p-value:', scor$p.value, ')', '\n')
 }
 
 match_gene_subset_by_caf <- function(ref_data, gene_subset, freq_col='caf', id_col='gene_id', sig_col='sig_cnt',

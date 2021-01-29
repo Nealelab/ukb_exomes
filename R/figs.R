@@ -11,13 +11,15 @@ var_gene <- load_ukb_file('var_gene_comparison300k.txt.bgz')
 gene_sig$interval <- get_freq_interval(gene_sig$caf)
 var_sig$interval <- get_freq_interval(var_sig$AF)
 
-pheno_annt_gene <- melt(pheno_annt_gene[, c(1:7,11:20)], value.name="sig_cnt", id.var=colnames(pheno_annt_gene[, c(1:7,20)]))
-pheno_annt_gene$annotation <- sapply(str_split(pheno_annt_gene$variable, '_sig_cnt_'),function(x){x[[1]]})
-pheno_annt_gene$result_type <- sapply(str_split(pheno_annt_gene$variable, '_sig_cnt_'),function(x){x[[2]]})
+pheno_annt_gene <- pheno_annt_gene %>%
+  pivot_longer(cols = contains('_sig_cnt_'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
+  mutate(annotation = str_split(labels, "_sig_cnt_") %>% map_chr(., 1)) %>%
+  mutate(result_type = str_split(labels, "_sig_cnt_") %>% map_chr(., 2))
 
-pheno_annt_var <- melt(pheno_annt_var[, c(1:7,9:12)], value.name = "sig_cnt", id.var=colnames(pheno_annt_var[, c(1:7,12)]))
-pheno_annt_var$annotation <- sapply(str_split(pheno_annt_var$variable, '_sig_cnt'),function(x){x[[1]]})
-pheno_annt_var$annotation[pheno_annt_var$annotation == 'missense'] = 'missense|LC'
+pheno_annt_var <- pheno_annt_var[,-8] %>%
+  pivot_longer(cols = contains('_sig_cnt'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
+  mutate(annotation = stringr::str_split(labels, "_sig_cnt") %>% map_chr(., 1))
+pheno_annt_var$annotation[pheno_annt_var$annotation=='missense'] = 'missense|LC'
 
 gene_sig$annotation <- factor(gene_sig$annotation,levels=annotation_types)
 var_sig$annotation <- factor(var_sig$annotation,levels=annotation_types)
