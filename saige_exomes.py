@@ -32,16 +32,20 @@ def get_exclusions_200k():
     return exclusions
 
 
-def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False, tranche: str = CURRENT_TRANCHE):
+def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False, tranche: str = CURRENT_TRANCHE,
+                      specific_phenos: str = None, min_cases: int = None):
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
     exclusion_ht = hl.import_table(f'gs://ukbb-pharma-exome-analysis/{tranche}/{tranche}_phentoypes_removeflag.txt', impute=True, key=PHENO_KEY_FIELDS)
-    ht = ht.annotate(keep=(exclusion_ht[ht.key]['status.remove'] != 'remove') | (ht.phenocode == 'COVID19'))
+    ht = ht.annotate(keep=(exclusion_ht[ht.key]['status.remove'] != 'remove') | (ht.phenocode == 'COVID19') | ht.phenocode.startswith('random_'))
+    if not min_cases:
+        min_cases = MIN_CASES
     ht = ht.filter(
         (
                 hl.set({'biogen', 'abbvie', 'pfizer'}).contains(ht.modifier) |
                 (
-                        (ht[f'n_cases_{sex}'] >= MIN_CASES) &
+                        (ht[f'n_cases_{sex}'] >= min_cases) &
                         ((ht.score >= 1) | (ht.trait_type == 'icd_first_occurrence') | (ht.phenocode == 'COVID19')) &
+                        # (ht.phenocode.startswith('30')) & hl.is_missing(ht.score) &  # biomarkers
                         ht.keep & (ht.modifier != 'raw') &
                         ~ht.description.contains('Source of report')
                 )
@@ -52,6 +56,9 @@ def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False, tranche:
 
     if pilot:
         output = output.intersection(PILOT_PHENOTYPES)
+    if specific_phenos:
+        specific_phenos = specific_phenos.split(',')
+        output = [x for x in output if all(map(lambda y: y is not None, x)) and any([re.match(pcd, '-'.join(x)) for pcd in specific_phenos])]
     if limit:
         output = set(sorted(output)[:limit])
     pheno_key_dict = [dict(zip(PHENO_KEY_FIELDS, x)) for x in output]
@@ -62,7 +69,8 @@ def main(args):
     hl.init(log='/tmp/saige_temp_hail.log')
     sex = 'both_sexes'
 
-    phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None, pilot=not args.run_all_phenos)
+    phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None, pilot=not args.run_all_phenos,
+                                      specific_phenos=args.phenos, min_cases=args.min_cases)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
     if len(phenos_to_run) <= 20:
         logger.info(phenos_to_run)

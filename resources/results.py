@@ -34,10 +34,18 @@ def get_final_pheno_info_ht_path(tranche: str = CURRENT_TRANCHE):
 
 
 def get_results_mt_path(result_type: str = 'gene', tranche: str = CURRENT_TRANCHE, extension: str = 'mt',
-                        biomarkers: bool = False):
-    result_type = '' if result_type == 'gene' else 'variant_'
-    if biomarkers: result_type = f'biomarkers_{result_type}'
+                        biomarkers: bool = False, random_phenos: bool = False):
+    if random_phenos:
+        result_type = f'random_phenos_{result_type}_'
+    elif biomarkers:
+        result_type = f'biomarkers_{result_type}'
+    else:
+        result_type = '' if result_type == 'gene' else 'variant_'
     return f'{bucket}/{tranche}/results/{result_type}results.{extension}'
+
+
+def get_loeuf_results_path(analysis_type: str, extension: str = 'mt', tranche: str = CURRENT_TRANCHE):
+    return f'{bucket}/{tranche}/loeuf_analysis/{analysis_type}.{extension}'
 
 
 def get_results_timing_tsv_path(timing_type: str, trait_type: str = 'all', tranche: str = CURRENT_TRANCHE):

@@ -98,6 +98,13 @@ def pre_process_first_occurrence():
     hl.hadoop_copy(f'file://{local_out_path}', first_occcurrence_csv_path.replace('.csv', '.tsv'))
 
 
+def read_random_phenos():
+    random_mt = hl.import_matrix_table('gs://ukbb-pharma-exome-analysis/300k/random_phenos.tsv.bgz',
+                                       row_fields={'userId': hl.tint32}, row_key='userId', entry_type=hl.tfloat64,
+                                       min_partitions=100)
+    return random_mt
+
+
 def main(args):
     hl.init(log='/load_pheno.log')
     sexes = ('both_sexes_no_sex_specific', 'females', 'males')
@@ -156,11 +163,13 @@ def main(args):
         #     mt.write(get_ukb_pheno_mt_path(data_type, 'full'), args.overwrite)
         data_types = ('categorical', 'continuous', 'icd', 'custom', 'icd_first_occurrence')  # 'prescriptions',
         pheno_file_dict = {data_type: hl.read_matrix_table(get_ukb_pheno_mt_path(data_type, 'full')) for data_type in data_types}
+        pheno_file_dict['random'] = read_random_phenos()
         cov_ht = hl.read_table(get_ukb_covariates_ht_path())
         mt = combine_pheno_files_multi_sex(pheno_file_dict, cov_ht)
         priority_ht = hl.import_table(pheno_description_with_priority_path, impute=True, missing='', key='FieldID'
                                       ).select(*PRIORITIES)
         mt = mt.annotate_cols(**priority_ht[mt.phenocode])
+        mt = mt.annotate_cols(**{x: hl.if_else(mt.phenocode.startswith('random_'), 'h', mt[x]) for x in PRIORITIES})
         mt = mt.annotate_cols(
             score=2 * (hl.int(mt.Abbvie_Priority == 'h') + hl.int(mt.Biogen_Priority == 'h') + hl.int(mt.Pfizer_Priority == 'h')) +
                   hl.int(mt.Abbvie_Priority == 'm') + hl.int(mt.Biogen_Priority == 'm') + hl.int(mt.Pfizer_Priority == 'm'))
@@ -195,7 +204,15 @@ def main(args):
         mt = mt.annotate_cols(Abbvie_Priority='h', Biogen_Priority='h', Pfizer_Priority='h', score=6)
         mt = original_mt.union_cols(mt, row_join_type='outer')
         mt.write(get_ukb_pheno_mt_path(), args.overwrite)
-
+    # # TODO: pfizer male(s) bug
+    # original_mt = hl.read_matrix_table(get_ukb_pheno_mt_path())
+    # original_mt = original_mt.checkpoint(get_ukb_pheno_mt_path(f'full_before_{curdate}', sex='full'),
+    #                                      True)
+    # mt = original_mt
+    # mt = mt.key_cols_by('trait_type', 'phenocode', pheno_sex=hl.if_else(mt.pheno_sex.endswith('male'),
+    #                                                                     mt.pheno_sex + 's', mt.pheno_sex),
+    #                     coding=mt.coding, modifier=mt.modifier)
+    # mt.write(get_ukb_pheno_mt_path(), True)
 
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
     exclusions = set()
