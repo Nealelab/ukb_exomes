@@ -4,9 +4,9 @@ var_sig <- load_ukb_file('var_sig300k.txt.bgz')
 
 # Variant Matching
 var_match <- get_matched_data(var_sig, freq_col = 'AF')
+var_match <- var_match %>% mutate(annotation = factor(annotation, levels = annotation_types) )
 detach(package:plyr)
-summary <- sig_cnt_summary(var_match, sig_cnt_col = 'sig_pheno_cnt')
-summary
+sig_cnt_summary(var_match, sig_cnt_col = 'sig_pheno_cnt')
 print_annotation_wilcoxon_test(var_match,'sig_pheno_cnt','annotation')
 
 p1 <- ggplot(var_match, aes(x = sig_pheno_cnt, color = annotation, fill = annotation)) +
@@ -14,21 +14,22 @@ p1 <- ggplot(var_match, aes(x = sig_pheno_cnt, color = annotation, fill = annota
   labs(y = 'Variant Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes
-var_match$annotation <- factor(var_match$annotation, levels = annotation_types)
-p2 <- ggplot(var_match[complete.cases(var_match),], aes(x = sig_pheno_cnt, color = annotation, fill = annotation)) +
+
+p2 <- var_match%>%
+  na.omit() %>%
+  ggplot(., aes(x = sig_pheno_cnt, color = annotation, fill = annotation)) +
   geom_histogram(alpha = 0.5, binwidth = 1) +
   labs(y = 'Variant Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, scales = 'free', labeller = label_type)
 
-
 # Gene Matching (SKATO)
 library(plyr)
 gene_match <- get_matched_data(gene_sig[gene_sig$result_type=='SKATO',], freq_col = 'caf')
+gene_match <- gene_match %>% mutate(annotation = factor(annotation, levels = annotation_types) )
 detach(package:plyr)
-summary <- sig_cnt_summary(gene_match, sig_cnt_col = 'sig_cnt')
-summary
+sig_cnt_summary(gene_match, sig_cnt_col = 'sig_cnt')
 print_annotation_wilcoxon_test(gene_match,'sig_cnt','annotation')
 
 p1 <- ggplot(gene_match, aes(x = sig_cnt, color = annotation, fill = annotation)) +
@@ -36,8 +37,9 @@ p1 <- ggplot(gene_match, aes(x = sig_cnt, color = annotation, fill = annotation)
   labs(y = 'Gene Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes
-var_match$annotation <- factor(var_match$annotation, levels = annotation_types)
-p2 <- ggplot(gene_match[complete.cases(gene_match),], aes(x = sig_cnt, color = annotation, fill = annotation)) +
+p2 <- gene_match%>%
+  na.omit() %>%
+  ggplot(., aes(x = sig_cnt, color = annotation, fill = annotation)) +
   geom_histogram(alpha = 0.5, binwidth = 1) +
   labs(y = 'Gene Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
@@ -46,13 +48,30 @@ p2 <- ggplot(gene_match[complete.cases(gene_match),], aes(x = sig_cnt, color = a
 
 # 470 Gene subset - Match by CAF
 # gene_sub <- read_delim('forKonrad_sig31kDNM_consensus_genes_2021_01_12.txt', delim='\t', col_types = all_cols)
-sub_mis <- match_gene_subset_by_caf(full0[full0$annotation=='missense|LC',],  gene_subset = gene_sub, sim_times = 1000)
-sub_lof <- match_gene_subset_by_caf(full0[full0$annotation=='pLoF',],  gene_subset = gene_sub, sim_times = 1000)
-sub_syn <- match_gene_subset_by_caf(full0[full0$annotation=='synonymous',],  gene_subset = gene_sub, sim_times = 1000)
+sub <- gene_sig %>%
+  filter(result_type=='SKATO') %>%
+  merge(gene_sub,.,by.x = c('gene_id','symbol'),by.y =c('gene_id','gene_symbol'),all.x =T)
+
+full_sum <- gene_sig %>%
+  filter(result_type=='SKATO') %>%
+  sig_cnt_summary()
+
+sub_sum <- sig_cnt_summary(sub)
+
+sub_lof <- gene_sig %>%
+  filter(annotation == 'pLoF' & result_type == 'SKATO')%>%
+  match_gene_subset_by_caf(gene_subset = gene_sub, sim_times = 1000)
+
+sub_mis <- gene_sig %>%
+  filter(annotation == 'missense|LC'& result_type == 'SKATO')%>%
+  match_gene_subset_by_caf(gene_subset = gene_sub, sim_times = 1000)
+
+sub_syn <- gene_sig %>%
+  filter(annotation == 'synonymous'& result_type == 'SKATO')%>%
+  match_gene_subset_by_caf(gene_subset = gene_sub, sim_times = 1000)
 
 sim_sum1000 <- rbind(sub_mis[[2]],sub_lof[[2]], sub_syn[[2]])
 sim_sum1000$annotation <- factor(rep(c('missense|LC', 'pLoF', 'synonymous'),each=1000),levels=annotation_types)
-
 
 plt1 <- ggplot(sim_sum1000, aes(x = means, color = annotation)) +
   geom_density(alpha = 0.5) + theme_bw() + labs(y = 'Density', x = 'Mean') +

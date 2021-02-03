@@ -8,9 +8,9 @@ from ukb_exomes.resources import *
 ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
 TESTS = ('skato', 'skat', 'burden')
 
-def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001):
+def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, tranche: str = CURRENT_TRANCHE, cutoff: float = 0.0001, random_phenos: bool = False):
     af = get_af_info_ht(result_type, tranche)
-    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
+    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche, random_phenos=random_phenos))
 
     if result_type == 'gene':  # Gene Info
         af = af.filter(af.caf > cutoff)
@@ -34,13 +34,22 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
         if by_annotation:
             lambda_gc = hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
             mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, af=f'Allele Freq > {cutoff}')
-            mt = mt.annotate_cols(**{f'{annotation}_gc_variant': mt.lambda_gc[annotation] for annotation in ('pLoF', 'missense', 'synonymous')},)
+            mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_variant': mt.lambda_gc[annotation] for annotation in ('pLoF', 'missense', 'synonymous')},)
         else:
             lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
             mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, af=f'Allele Freq > {cutoff}')
     ht = mt.cols()
     return ht
 
+def compute_lambda_gc_by_gene_ht(tranche: str = CURRENT_TRANCHE, random_phenos: bool = False):
+    af = get_af_info_ht(tranche=tranche)
+    mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche, random_phenos=random_phenos))
+    mt = mt.filter_rows(hl.is_defined(af.index(mt['annotation'], mt['gene_id'])))
+    mt = mt.annotate_rows(lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
+                          lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
+                          lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)),)
+    ht = mt.rows()
+    return ht
 
 def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
     pheno = get_ukb_pheno_mt()
