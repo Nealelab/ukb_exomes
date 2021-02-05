@@ -1,50 +1,56 @@
 source('~/ukb_exomes/R/constants.R')
 
-gene_sig  <- load_ukb_file('gene_sig300k.txt.bgz')
-var_sig <- load_ukb_file('var_sig300k.txt.bgz')
-pheno_sig  <- load_ukb_file('pheno_sig300k.txt.bgz')
-pheno_var_sig  <- load_ukb_file('pheno_var_sig300k.txt.bgz')
-pheno_annt_gene <- load_ukb_file('pheno_annt_gene300k.txt.bgz')
-pheno_annt_var <- load_ukb_file('pheno_annt_var300k.txt.bgz')
-var_gene <- load_ukb_file('var_gene_comparison300k.txt.bgz')
+gene_sig  = load_ukb_file('gene_sig300k.txt.bgz')
+var_sig = load_ukb_file('var_sig300k.txt.bgz')
+pheno_sig  = load_ukb_file('pheno_sig300k.txt.bgz')
+pheno_var_sig  = load_ukb_file('pheno_var_sig300k.txt.bgz')
+pheno_annt_gene = load_ukb_file('pheno_annt_gene300k.txt.bgz')
+pheno_annt_var = load_ukb_file('pheno_annt_var300k.txt.bgz')
+var_gene = load_ukb_file('var_gene_comparison300k.txt.bgz')
 
-gene_sig <- gene_sig %>%
-  mutate(interval = get_freq_interval(caf),
-         annotation = factor(annotation,levels=annotation_types))
-var_sig <- var_sig %>%
-  mutate(interval = get_freq_interval(AF),
-         annotation = factor(annotation,levels=annotation_types))
+gene_sig = gene_sig %>%
+  mutate(interval = get_freq_interval(caf), 
+         annotation = factor(annotation, levels=annotation_types),
+         result_type = factor(result_type, levels=result_types))
+var_sig = var_sig %>%
+  mutate(interval = get_freq_interval(AF), 
+         annotation = factor(annotation, levels=annotation_types))
 
-pheno_annt_gene <- pheno_annt_gene %>%
+pheno_annt_gene = pheno_annt_gene %>%
   pivot_longer(cols = contains('_sig_cnt_'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
-  mutate(annotation = str_split(labels, "_sig_cnt_") %>% map_chr(., 1),
+  mutate(annotation = str_split(labels, "_sig_cnt_") %>% map_chr(., 1), 
          result_type = str_split(labels, "_sig_cnt_") %>% map_chr(., 2)) %>%
-  mutate(annotation = factor(annotation,levels=annotation_types),
-         trait_type2 = factor(trait_type2, levels=trait_types))
+  mutate(annotation = factor(annotation, levels=annotation_types), 
+         trait_type2 = factor(trait_type2, levels=trait_types),
+         result_type = factor(result_type, levels=result_types))
 
-pheno_annt_var <- pheno_annt_var %>%
+pheno_annt_var = pheno_annt_var %>%
   select(., -sig_cnt) %>%
   pivot_longer(cols = contains('_sig_cnt'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
   mutate(annotation = stringr::str_split(labels, "_sig_cnt") %>% map_chr(., 1)) %>%
-  mutate(annotation = replace(annotation, annotation=='missense','missense|LC')) %>%
-  mutate(annotation = factor(annotation,levels=annotation_types),
+  mutate(annotation = replace(annotation, annotation=='missense', 'missense|LC')) %>%
+  mutate(annotation = factor(annotation, levels=annotation_types), 
          trait_type2 = factor(trait_type2, levels=trait_types))
 
-pheno_sig <- pheno_sig %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types))
-pheno_var_sig <- pheno_var_sig %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types))
-var_gene <- var_gene %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types))
+pheno_sig = pheno_sig %>%
+  mutate(trait_type2 = factor(trait_type2, levels=trait_types),
+         result_type = factor(result_type, levels=result_types))
+
+pheno_var_sig = pheno_var_sig %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types))
+var_gene = var_gene %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types))
 
 # Gene-Level Association Count
-plt <- ggplot(gene_sig, aes(x = sig_cnt, color = annotation, fill = annotation)) +
-  geom_histogram(alpha = 0.5, binwidth = 1 ) +
+plt = gene_sig %>% filter() %>%
+  ggplot + aes(x = sig_cnt, color = annotation, fill = annotation) +
+  geom_histogram(alpha = 0.5, binwidth = 1 ) + theme_bw() + 
   labs(y = 'Gene Count', x = 'Association Count') +
-  theme_bw() + xlim(0, 50) + scale_y_log10(label = comma) +
+  xlim(0, 50) + scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_grid(result_type~annotation, labeller = label_type)
 
-plt <- gene_sig %>% filter(result_type == 'SKATO') %>%
-  ggplot(., aes(x = caf, y = sig_cnt, color = annotation, label = gene_symbol)) +
-  geom_point( alpha = 0.5) + theme_bw() +
+plt = gene_sig %>% filter(result_type == 'skato') %>%
+  ggplot + aes(x = caf, y = sig_cnt, color = annotation, label = gene_symbol) +
+  geom_point(alpha = 0.5) + theme_bw() +
   labs(x = 'Cumulative Allele Frequency', y = 'Association Count \n ( Gene-Level )') +
   geom_hline(yintercept = 50, lty = 2) +
   geom_text_repel(data = gene_sig[gene_sig$sig_cnt>50, ]) +
@@ -52,60 +58,58 @@ plt <- gene_sig %>% filter(result_type == 'SKATO') %>%
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, labeller = label_type)
 
-plt <- gene_sig %>% filter(result_type == 'SKATO') %>%
-  ggplot(., aes(x = interval, y = sig_cnt, color = annotation, label = gene_symbol)) +
+plt = gene_sig %>% filter(result_type == 'skato') %>%
+  ggplot + aes(x = interval, y = sig_cnt, color = annotation, label = gene_symbol) +
   geom_boxplot() + theme_bw() +
-  labs(x = 'Cumulative Allele Frequency', y = 'Association Count \n (SKATO)') +
-  geom_text_repel(data = gene_sig[gene_sig$sig_cnt>50 & gene_sig$result_type == 'SKATO', ]) +
+  labs(x = 'Cumulative Allele Frequency', y = 'Association Count \n (SKAT-O)') +
+  geom_text_repel(data = gene_sig[gene_sig$sig_cnt>50 & gene_sig$result_type == 'skato', ]) +
   scale_x_discrete(limits = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')) +
   scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, scales = 'free', labeller = label_type)
 
 # Variant-Level Association Count
-plt <- var_sig %>% filter(!is.na(annotation)) %>%
-  ggplot(., aes(x = sig_pheno_cnt, color = annotation, fill = annotation)) +
-  geom_histogram(alpha = 0.5, binwidth = 1 ) +
+plt = var_sig %>% filter(!is.na(annotation)) %>%
+  ggplot + aes(x = sig_pheno_cnt, color = annotation, fill = annotation) +
+  geom_histogram(alpha = 0.5, binwidth = 1 ) + theme_bw() + 
   labs(y = 'Variant Count', x = 'Association Count') +
-  theme_bw() + xlim(0, 120) +
-  scale_y_log10(label = comma) +
+  xlim(0, 120) + scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, labeller = label_type)
 
-plt1 <- var_sig %>% filter(!is.na(annotation)) %>%
-  ggplot(.,aes(x = AF, y = sig_pheno_cnt, color = annotation, label = paste(gene, ':', locus))) +
-  geom_point( alpha = 0.5) + theme_bw() +
+plt1 = var_sig %>% filter(!is.na(annotation)) %>%
+  ggplot + aes(x = AF, y = sig_pheno_cnt, color = annotation, label = paste(gene, ':', locus)) +
+  geom_point(alpha = 0.5) + theme_bw() +
   labs(x = 'Allele Frequency', y = 'Association Count \n ( Variant-Level )') +
   geom_hline(yintercept = 100, lty = 2) +
-  geom_text_repel(data = var_sig[var_sig$sig_pheno_cnt>100, ]) +
+  geom_text_repel(data = var_sig[var_sig$sig_pheno_cnt>100 & !is.na(var_sig$annotation),]) +
   scale_x_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, labeller = label_type)
 
-plt2 <- var_sig %>% filter(!is.na(annotation)) %>%
-  ggplot(aes(x = interval, y = sig_pheno_cnt, color = annotation, label = paste(gene, ':', locus))) +
+plt2 = var_sig %>% filter(!is.na(annotation)) %>%
+  ggplot + aes(x = interval, y = sig_pheno_cnt, color = annotation, label = paste(gene, ':', locus)) +
   geom_boxplot() + theme_bw() +
   labs(x = 'Allele Frequency', y = 'Association Count \n ( Variant-Level )') +
-  geom_text_repel(data = var_sig[var_sig$sig_pheno_cnt>100, ]) +
+  geom_text_repel(data = var_sig[var_sig$sig_pheno_cnt>100  & !is.na(var_sig$annotation), ]) +
   # scale_x_discrete(limits = c('[0, 0.0001)', '[0.0001, )')) +
   scale_x_discrete(limits = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')) +
   scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~annotation, nrow = 3, scales = 'free', labeller = label_type)
 
-# plt <- ggarrange(plt1, plt2, ncol=2)
-
 # Phenotype-Level Association Count (By Gene)
-plt <- ggplot(pheno_sig, aes(x = sig_cnt, color = trait_type2, fill = trait_type2)) +
-  geom_histogram(alpha = 0.5, binwidth = 1 ) +
+plt = pheno_sig %>% filter() %>%
+  ggplot + aes(x = sig_cnt, color = trait_type2, fill = trait_type2) +
+  geom_histogram(alpha = 0.5, binwidth = 1 ) + theme_bw() + 
   labs(y = 'Phenotype Count', x = 'Association Count \n ( Gene-Level )') +
-  theme_bw() + xlim(0, 60) +
-  scale_y_log10(label = comma) +
+  xlim(0, 60) + scale_y_log10(label = comma) +
   trait_color_scale + trait_fill_scale + themes +
   facet_grid(result_type~trait_type2, labeller = label_type)
 
-plt <- ggplot(pheno_sig, aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode)) +
-  geom_point( alpha = 0.5) + theme_bw() +
+plt = pheno_sig %>% filter() %>%
+  ggplot + aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5) + theme_bw() +
   labs(x = 'Number of Cases', y = 'Association Count \n ( Gene-Level )') +
   geom_hline(yintercept = 200, lty = 2) +
   geom_text_repel(data = pheno_sig[pheno_sig$sig_cnt>200, ]) +
@@ -113,8 +117,9 @@ plt <- ggplot(pheno_sig, aes(x = n_cases, y = sig_cnt, color = trait_type2, labe
   trait_color_scale + trait_fill_scale + themes +
   facet_wrap(~result_type, nrow = 3, labeller = label_type)
 
-plt <- ggplot(pheno_annt_gene, aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode)) +
-  geom_point( alpha = 0.4) + theme_bw() +
+plt = pheno_annt_gene %>% filter() %>%
+  ggplot + aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.4) + theme_bw() +
   labs(x = 'Number of Cases', y = 'Association Count \n ( Gene-Level )') +
   geom_hline(yintercept = 150, lty = 2) +
   geom_text_repel(data = pheno_annt_gene[pheno_annt_gene$sig_cnt>150 , ]) +
@@ -122,65 +127,59 @@ plt <- ggplot(pheno_annt_gene, aes(x = n_cases, y = sig_cnt, color = trait_type2
   trait_color_scale + trait_fill_scale + themes +
   facet_grid(annotation~result_type, labeller = label_type)
 
-plt <- ggplot(pheno_sig, aes(x = sig_cnt, color = trait_type2, fill = trait_type2)) +
-  geom_histogram(alpha = 0.5, binwidth = 1 ) +
-  labs(y = 'Phenotype Count', x = 'Association Count \n ( Gene-Level )') +
-  theme_bw() + xlim(0, 60) +
-  scale_y_log10(label = comma) +
-  trait_color_scale + trait_fill_scale + themes +
-  facet_grid(result_type~trait_type2, labeller = label_type)
-
 # Phenotype-Level Association Count (By Variant)
-plt <- ggplot(pheno_var_sig, aes(x = sig_var_cnt, color = trait_type2, fill = trait_type2)) +
-  geom_histogram(alpha = 0.5, binwidth = 1 ) +
+plt = pheno_var_sig %>% filter() %>%
+  ggplot + aes(x = sig_var_cnt, color = trait_type2, fill = trait_type2) +
+  geom_histogram(alpha = 0.5, binwidth = 1 ) + theme_bw() + 
   labs(y = 'Phenotype Count', x = 'Association Count \n ( Variant-Level )') +
-  theme_bw() + xlim(0,100) +
-  scale_y_log10(label = comma) +
+  xlim(0, 100) + scale_y_log10(label = comma) +
   trait_color_scale + trait_fill_scale + themes +
   facet_wrap(~trait_type2, ncol = 3, labeller = label_type)
 
-plt <- ggplot(pheno_var_sig, aes(x = n_cases, y = sig_var_cnt, color = trait_type2, label = phenocode)) +
-  geom_point( alpha = 0.5) + theme_bw() +
+plt = pheno_var_sig %>% filter() %>%
+  ggplot + aes(x = n_cases, y = sig_var_cnt, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5) + theme_bw() +
   labs(x = 'Number of Cases', y = 'Association Count \n ( Variant-Level )') +
   geom_hline(yintercept = 40000, lty = 2) +
   geom_text_repel(data = pheno_var_sig[pheno_var_sig$sig_var_cnt>40000, ]) +
   scale_x_log10(label = comma) +
   trait_color_scale + trait_fill_scale + themes
 
-plt <- ggplot(pheno_annt_var, aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode)) +
-  geom_point( alpha = 0.4) + theme_bw() +
+plt = pheno_annt_var %>% filter() %>%
+  ggplot + aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.4) + theme_bw() +
   labs(x = 'Number of Cases', y = 'Association Count \n ( Variant-Level )') +
   scale_x_log10(label = comma) +
   trait_color_scale + trait_fill_scale + themes +
   facet_grid(annotation~trait_type2, scales='free', labeller = label_type)
 
 # Gene Variant Association Count Comparison
-plt <- ggplot(var_gene, aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode)) + geom_point( alpha = 0.5) +
-  labs(x = 'Number of Cases', y = 'Association Count') + theme_bw() +
+plt = var_gene %>% filter() %>% 
+  ggplot + aes(x = n_cases, y = sig_cnt, color = trait_type2, label = phenocode) + 
+  geom_point( alpha = 0.5) + theme_bw() +
+  labs(x = 'Number of Cases', y = 'Association Count') + 
   scale_x_log10(label = comma) +
   trait_color_scale + trait_fill_scale + themes +
   facet_wrap(trait_type2~cnt_type, scales = 'free', nrow = 3, labeller = label_type)
 
 # Cumulative Allele Frequency Comparison
-plt1 <- gene_sig %>% filter(sig_cnt > 0) %>%
-  ggplot(., aes(x = caf, color = annotation)) +
+plt1 = gene_sig %>% filter(sig_cnt > 0) %>%
+  ggplot + aes(x = caf, color = annotation) +
   stat_ecdf() +xlim(0, 0.001) + theme_bw() +
   labs(x = 'Cumulative Allele Frequency', y = 'Cumulative Distribution', title = 'Genes with Significant Hits') +
   annotation_color_scale + annotation_fill_scale + themes +
   facet_wrap(~result_type, nrow = 3, labeller = label_type)
 
-plt2 <- gene_sig %>% filter(sig_cnt == 0) %>%
-  ggplot(., aes(x = caf, color = annotation)) +
+plt2 = gene_sig %>% filter(sig_cnt == 0) %>%
+  ggplot + aes(x = caf, color = annotation) +
   stat_ecdf() + xlim(0, 0.001) + theme_bw() +
   labs(x = 'Cumulative Allele Frequency', y = 'Cumulative Distribution', title = 'Genes without Significant Hits') +
   annotation_color_scale + annotation_fill_scale +themes +
   facet_wrap(~result_type, nrow = 3, labeller = label_type)
 
-# plt <- ggarrange(plt1, plt2, ncol = 2)
-
 # Correlation: CAF vs. Association Count
 detach(package:plyr)
 print_freq_sig_cor()
-print_freq_sig_cor(test='SKAT')
-print_freq_sig_cor(test='Burden Test')
+print_freq_sig_cor(test='skat')
+print_freq_sig_cor(test='burden')
 print_freq_sig_cor(data = var_sig, test = 'variant', freq_col='AF', sig_col = 'sig_pheno_cnt')
