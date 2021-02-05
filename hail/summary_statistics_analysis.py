@@ -9,13 +9,13 @@ gene = get_sig_cnt_mt()
 
 # Gene Association Count
 gene_sig = gene.rows()
-gene_sig = gene_sig.select('caf', data=[(gene_sig.sig_pheno_cnt_skato, 'SKATO'), (gene_sig.sig_pheno_cnt_skat, 'SKAT'), (gene_sig.sig_pheno_cnt_burden, 'Burden Test')]).explode('data')
+gene_sig = gene_sig.select('caf', data=[(gene_sig.sig_pheno_cnt_skato, 'skato'), (gene_sig.sig_pheno_cnt_skat, 'skat'), (gene_sig.sig_pheno_cnt_burden, 'burden')]).explode('data')
 gene_sig = gene_sig.transmute(sig_cnt=gene_sig.data[0], result_type=gene_sig.data[1])
 gene_sig.export('gs://ukbb-exome-public/summary_statistics_analysis/gene_sig300k.txt.bgz')
 
 # Phenotype Association Count (Gene-Level)
 pheno_sig = gene.cols()
-pheno_sig = pheno_sig.select('n_cases', 'description', data=[(pheno_sig.sig_gene_cnt_skato, 'SKATO'), (pheno_sig.sig_gene_cnt_skat, 'SKAT'), (pheno_sig.sig_gene_cnt_burden, 'Burden Test')]).explode('data')
+pheno_sig = pheno_sig.select('n_cases', 'description', data=[(pheno_sig.sig_gene_cnt_skato, 'skato'), (pheno_sig.sig_gene_cnt_skat, 'skat'), (pheno_sig.sig_gene_cnt_burden, 'burden')]).explode('data')
 pheno_sig = pheno_sig.transmute(sig_cnt=pheno_sig.data[0], result_type=pheno_sig.data[1])
 pheno_sig = pheno_sig.annotate(trait_type2=hl.if_else(pheno_sig.trait_type == 'icd_first_occurrence', 'icd10', pheno_sig.trait_type))
 pheno_sig.export('gs://ukbb-exome-public/summary_statistics_analysis/pheno_sig300k.txt.bgz')
