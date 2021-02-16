@@ -46,8 +46,10 @@ def get_doubletons(
         mt = mt.filter_cols(~mt.meta.sample_filters.related)
         mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
-    logger.info("Filtering to rows where AC == 2...")
-    mt = mt.filter_rows(mt.freq[freq_index].AC == 2)
+    logger.info("Filtering to rows where AC == 2 and homozygote count == 0...")
+    mt = mt.filter_rows(
+        (mt.freq[freq_index].AC == 2) & (mt.freq[freq_index].homozygote_count == 0)
+    )
 
     logger.info("Annotating each doubleton with sample IDs...")
     mt = mt.annotate_rows(pair=hl.agg.filter(mt.GT.is_het(), hl.agg.collect(mt.s)),)
@@ -70,7 +72,10 @@ def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
     mt = mt.annotate_cols(s_1=rand_indices.contains(mt.s))
 
     logger.info("Selecting a second set of 100k random samples...")
-    indices = mt.aggregate(hl.agg.collect(mt.col_idx()))
+    mt = mt.annotate_cols(col_idx=hl.or_missing(~mt.s_1, mt.col_idx))
+    indices = mt.aggregate(
+        hl.agg.filter(hl.is_defined(mt.col_idx), hl.agg.collect(mt.col_idx()))
+    )
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
     mt = mt.annotate_cols(s_2=rand_indices.contains(mt.s))
     return mt.cols()
@@ -81,10 +86,25 @@ def main(args):
     data_source = "broad"
     freeze = args.freeze
     tranche_data = (data_source, freeze)
+    pops = set(args.pops_to_include.split(","))
 
     try:
         logger.info("Reading in adj-filtered hardcalls MT...")
         mt = get_ukbb_data(*tranche_data, adj=True, meta_root="meta")
+
+        logger.info(f"Only including these populations: {pops}")
+        mt = mt.annotate_cols(
+            meta=mt.meta.annotate(
+                pop=mt.meta.hybrid_pop_data.pop
+                if args.use_hybrid_pop
+                else mt.meta.pan_ancestry_meta.pop
+            )
+        )
+        logger.info(
+            f"Removing variants from samples outside of included populations..."
+        )
+        mt = mt.filter_cols(hl.literal(pops).contains(mt.pop))
+        mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
         if args.get_doubletons:
             logger.info("Reading in release HT and selecting frequency field...")
@@ -123,6 +143,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n_pairs", help="Desired number of sample pairs", type=int,
+    )
+    parser.add_argument(
+        "--pops_to_include", help="Populations to include in this analysis",
+    )
+    parser.add_argument(
+        "--use_hybrid_pop",
+        help="Use hybrid ancestry assignments when generating LoF matrix summary Table. Will use pan-ancestry assignment if not set",
+        action="store_true",
     )
     parser.add_argument(
         "-f", "--freeze", help="Data freeze to use", default=CURRENT_FREEZE, type=int,
