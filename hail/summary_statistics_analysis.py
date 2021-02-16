@@ -119,4 +119,10 @@ var_gene = var_gene.transmute(sig_cnt=var_gene.data[0], cnt_type=var_gene.data[1
 var_gene = var_gene.annotate(trait_type2=hl.if_else(var_gene.trait_type == 'icd_first_occurrence', 'icd10', var_gene.trait_type))
 var_gene.export('gs://ukbb-exome-public/summary_statistics_analysis/var_gene_comparison300k.txt.bgz')
 
-
+# --------BETAs for significant hits (Singel-Variant Test)----------
+var = hl.read_matrix_table(get_results_mt_path('variant'))
+var = var.annotate_entries(BETA_sig = hl.or_missing(var.Pvalue<1e-6, var.BETA))
+var = var.select_cols('n_cases')
+var = var.annotate_cols(rare_beta = hl.agg.filter(var.AF < 0.001, hl.agg.mean(var.BETA_sig)),
+                        common_beta = hl.agg.filter(var.AF >= 0.001, hl.agg.mean(var.BETA_sig)),)
+var.cols().export('gs://ukbb-exome-pharma-wlu/subset_data/mean_beta_sig_var300k.txt.bgz')

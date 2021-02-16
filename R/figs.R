@@ -45,8 +45,9 @@ lambda_gene_af_annt = lambda_gene_af_annt %>%
          trait_type2 = factor(trait_type2, levels=trait_types),)
 
 lambda_by_gene = lambda_by_gene %>%
-  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),) %>%
+  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
+         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),) %>%
   mutate(annotation = factor(annotation,levels = annotation_types),
          result_type = factor(result_type,levels = result_types),)
 
@@ -138,14 +139,16 @@ lambda_var_af_annt %>%
   trait_color_scale + trait_fill_scale +
   facet_wrap(annotation~AF_range, nrow = 3, labeller = label_type) + themes
 
-lambda_by_gene$lambda_gc[lambda_by_gene$lambda_gc>2] =2
 lambda_by_gene %>%
+  mutate(lambda_gc = replace(lambda_gc, lambda_gc>2, 2)) %>%
+  filter(trait_type == 'categorical') %>%
   ggplot + aes(x = lambda_gc, color = annotation, fill = annotation) +
   geom_density(alpha = 0.5) + theme_bw() +
-  labs(x = 'Lambda GC', y = 'Density') +
+  # scale_y_log10(label=comma) +
+  labs(x = 'Lambda GC (Categorical)', y = 'Density') +
   geom_vline(xintercept = 1, lty = 2) +
   annotation_color_scale + annotation_fill_scale + themes +
-  facet_grid(result_type~annotation, scale='free', labeller = label_type)
+  facet_wrap(result_type~annotation, scale='free', nrow=3, labeller = label_type)
 
 # --------Significant Hits----------
 gene_sig  = load_ukb_file('gene_sig300k.txt.bgz')

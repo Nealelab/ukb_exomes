@@ -7,6 +7,7 @@ from ukb_exomes.resources import *
 
 ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
 TESTS = ('skato', 'skat', 'burden')
+TRAIT_TYPES = ('continuous', 'categorical')
 
 def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, tranche: str = CURRENT_TRANCHE,
                          af_lower: float = None, af_upper: float = None, n_var_min: int = None, random_phenos: bool = False):
@@ -29,11 +30,15 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
             mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_{test}': mt[f'lambda_gc_{test}'][annotation] for annotation in ANNOTATIONS for test in TESTS})
             ht = mt.cols()
         elif by_gene:
-            mt = mt.filter_cols(mt.trait_type == 'continuous')
+            mt = mt.annotate_cols(trait_type2=hl.if_else(mt.trait_type == 'continuous', mt.trait_type, 'categorical'))
             mt = mt.select_rows('CAF',
-                                lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
-                                lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
-                                lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)),)
+                                lambda_gc_skato=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
+                                lambda_gc_skat=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
+                                lambda_gc_burden=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), )
+            mt = mt.annotate_rows(**{f'{trait_type}_lambda_gc_{test}': mt[f'lambda_gc_{test}'][trait_type] for trait_type in TRAIT_TYPES for test in TESTS},
+                                  all_lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)),
+                                  all_lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)),
+                                  all_lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), )
             ht = mt.rows()
         else:
             mt = mt.select_cols('n_cases', 
