@@ -6,11 +6,11 @@ var_sig = load_ukb_file('var_sig300k.txt.bgz')
 detach(package:plyr)
 var_match = get_matched_data(var_sig, freq_col = 'AF')
 var_match = var_match %>% mutate(annotation = factor(annotation, levels = annotation_types) )
-sig_cnt_summary(var_match, sig_cnt_col = 'sig_pheno_cnt')
+sig_cnt_summary(var_match, sig_col = 'sig_pheno_cnt')
 print_annotation_wilcoxon_test(var_match, 'sig_pheno_cnt', 'annotation')
 
 p1 = ggplot(var_match, aes(x = sig_pheno_cnt, color = annotation, fill = annotation)) +
-  geom_histogram(alpha = 0.5, binwidth = 5, position = 'dodge') +
+  geom_histogram(alpha = 0.5, binwidth = 3, position = 'dodge') +
   labs(y = 'Variant Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes
@@ -25,15 +25,14 @@ p2 = var_match%>%
   facet_wrap(~annotation, nrow = 3, scales = 'free', labeller = label_type)
 
 # Gene Matching (SKATO)
-library(plyr)
-gene_match = get_matched_data(gene_sig[gene_sig$result_type=='SKATO', ], freq_col = 'caf')
-gene_match = gene_match %>% mutate(annotation = factor(annotation, levels = annotation_types) )
 detach(package:plyr)
-sig_cnt_summary(gene_match, sig_cnt_col = 'sig_cnt')
+gene_match = get_matched_data(gene_sig[gene_sig$result_type=='skato', ], freq_col = 'caf')
+gene_match = gene_match %>% mutate(annotation = factor(annotation, levels = annotation_types) )
+sig_cnt_summary(gene_match, sig_col = 'sig_cnt')
 print_annotation_wilcoxon_test(gene_match, 'sig_cnt', 'annotation')
 
 p1 = ggplot(gene_match, aes(x = sig_cnt, color = annotation, fill = annotation)) +
-  geom_histogram(alpha = 0.5, binwidth = 5, position = 'dodge') +
+  geom_histogram(alpha = 0.5, binwidth = 3, position = 'dodge') +
   labs(y = 'Gene Count', x = 'Association Count') +
   theme_bw() +scale_y_log10(label = comma) +
   annotation_color_scale + annotation_fill_scale + themes
@@ -86,3 +85,45 @@ plt2 = ggplot(sim_sum1000, aes(x = props, color = annotation)) +
   annotation_color_scale + annotation_fill_scale + themes
 
 # ggpubr::ggarrange(plt2, plt1, nrow=2)
+
+# clinvar Match
+# clinvar <- read_delim(gzfile('subset_data_clinvar_300k.txt.bgz'), delim='\t',col_types = all_cols)
+colnames(clinvar)[9] <- 'sig_cnt'
+P <- clinvar %>% filter(pathogenicity == 'P/LP')
+B <- clinvar %>% filter(pathogenicity == 'B/LB')
+V <- clinvar %>% filter(pathogenicity == 'VUS')
+
+matched_P <- match_gene_subset_by_caf(ref_data = clinvar, gene_subset = P, freq_col = 'AF', id_col = 'locus', sig_col = 'sig_cnt', interval = 0.001, sim_times = 100)
+matched_B <- match_gene_subset_by_caf(ref_data = clinvar, gene_subset = B, freq_col = 'AF', id_col = 'locus', sig_col = 'sig_cnt', interval = 0.001, sim_times = 100)
+matched_V <- match_gene_subset_by_caf(ref_data = clinvar, gene_subset = V, freq_col = 'AF', id_col = 'locus', sig_col = 'sig_cnt', interval = 0.001, sim_times = 100)
+
+matched_data <- match_annotation_by_freq(clinvar,  'P/LP', 'B/LB', annt_col = 'pathogenicity', interval = 0.0001, sim_times = 1000)
+
+P_sum_annt <- matched_P[[2]] %>%
+  mutate(pathogenicity = 'P/LP')
+P_sum <- matched_P[[1]] %>%
+  map_dfr(sig_cnt_summary, .id = 'simulation', annt_col=NULL) %>%
+  mutate(annotation = 'Overall',
+         pathogenicity = 'P/LP')%>%
+  select(1,5,2:4,6)
+
+B_sum_annt <- matched_B[[2]] %>%
+  mutate(pathogenicity = 'B/LB')
+B_sum <- matched_B[[1]] %>%
+  map_dfr(sig_cnt_summary, .id = 'simulation', annt_col=NULL) %>%
+  mutate(annotation = 'Overall',
+         pathogenicity = 'B/LB')%>%
+  select(1,5,2:4,6)
+
+V_sum_annt <- matched_V[[2]] %>%
+  mutate(pathogenicity = 'VUS')
+V_sum <- matched_V[[1]] %>%
+  map_dfr(sig_cnt_summary, .id = 'simulation', annt_col=NULL) %>%
+  mutate(annotation = 'Overall',
+         pathogenicity = 'VUS')%>%
+  select(1,5,2:4,6)
+
+matched_sum <- matched_data[[1]] %>%
+  map_dfr(sig_cnt_summary, .id = 'simulation', annt_col=NULL)
+
+P_sum <- clinvar %>% filter(pathogenicity == 'P/LP') %>% sig_cnt_summary(annt_col = NULL)

@@ -1,5 +1,153 @@
 source('~/ukb_exomes/R/constants.R')
 
+# --------Preliminary Lambda GC Check----------
+lambda_gene_full  = load_ukb_file('lambda_gene_full300k.txt.bgz')
+lambda_gene_annt  = load_ukb_file('lambda_gene_annt300k.txt.bgz')
+lambda_gene_af  = load_ukb_file('lambda_gene_af300k.txt.bgz')
+lambda_gene_af_annt  = load_ukb_file('lambda_gene_af_annt300k.txt.bgz')
+
+lambda_var_full  = load_ukb_file('lambda_var_full300k.txt.bgz')
+lambda_var_annt  = load_ukb_file('lambda_var_annt300k.txt.bgz')
+lambda_var_af  = load_ukb_file('lambda_var_af300k.txt.bgz')
+lambda_var_af_annt  = load_ukb_file('lambda_var_af_annt300k.txt.bgz')
+
+lambda_by_gene  = load_ukb_file('lambda_by_gene300k.txt.bgz')
+
+# --------QCed Lambda GC----------
+
+# Data Cleaning
+lambda_gene_full = lambda_gene_full %>%
+  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),)%>%
+  mutate(result_type = factor(result_type,levels = result_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_gene_annt = lambda_gene_annt %>%
+  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
+         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),) %>%
+  mutate(annotation = factor(annotation,levels = annotation_types),
+         result_type = factor(result_type,levels = result_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_gene_af = lambda_gene_af %>%
+  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),) %>%
+  mutate(result_type = factor(result_type,levels = result_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_gene_af_annt = lambda_gene_af_annt %>%
+  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
+         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),) %>%
+  mutate(annotation = factor(annotation,levels = annotation_types),
+         result_type = factor(result_type,levels = result_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_by_gene = lambda_by_gene %>%
+  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),) %>%
+  mutate(annotation = factor(annotation,levels = annotation_types),
+         result_type = factor(result_type,levels = result_types),)
+
+lambda_var_full = lambda_var_full %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types),)
+lambda_var_af = lambda_var_af %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_var_annt = lambda_var_annt %>%
+  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),) %>%
+  mutate(annotation = factor(annotation,levels = annotation_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+lambda_var_af_annt = lambda_var_af_annt %>%
+  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),) %>%
+  mutate(annotation = factor(annotation,levels = annotation_types),
+         trait_type2 = factor(trait_type2, levels=trait_types),)
+
+# Plotting
+lambda_gene_full %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(~result_type, nrow=3, labeller = label_type) + themes
+
+lambda_gene_annt %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_grid(result_type~annotation, labeller = label_type) + themes
+
+lambda_gene_af %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(result_type~CAF_range, nrow = 3, labeller = label_type) + themes
+
+lambda_gene_af_annt %>%
+  filter(result_type == 'skato') %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_grid(CAF_range~annotation, labeller = label_type) + themes
+
+lambda_var_full %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale + themes
+
+lambda_var_annt %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(~annotation, nrow = 3, labeller = label_type) + themes
+
+lambda_var_af %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(~AF_range, nrow = 3, labeller = label_type) + themes
+
+lambda_var_af_annt %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 2) + ylim(0, 2) + theme_bw() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(annotation~AF_range, nrow = 3, labeller = label_type) + themes
+
+lambda_by_gene$lambda_gc[lambda_by_gene$lambda_gc>2] =2
+lambda_by_gene %>%
+  ggplot + aes(x = lambda_gc, color = annotation, fill = annotation) +
+  geom_density(alpha = 0.5) + theme_bw() +
+  labs(x = 'Lambda GC', y = 'Density') +
+  geom_vline(xintercept = 1, lty = 2) +
+  annotation_color_scale + annotation_fill_scale + themes +
+  facet_grid(result_type~annotation, scale='free', labeller = label_type)
+
+# --------Significant Hits----------
 gene_sig  = load_ukb_file('gene_sig300k.txt.bgz')
 var_sig = load_ukb_file('var_sig300k.txt.bgz')
 pheno_sig  = load_ukb_file('pheno_sig300k.txt.bgz')
@@ -18,8 +166,8 @@ var_sig = var_sig %>%
 
 pheno_annt_gene = pheno_annt_gene %>%
   pivot_longer(cols = contains('_sig_cnt_'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
-  mutate(annotation = str_split(labels, "_sig_cnt_") %>% map_chr(., 1), 
-         result_type = str_split(labels, "_sig_cnt_") %>% map_chr(., 2)) %>%
+  mutate(annotation = str_split(labels, '_sig_cnt_') %>% map_chr(., 1), 
+         result_type = str_split(labels, '_sig_cnt_') %>% map_chr(., 2)) %>%
   mutate(annotation = factor(annotation, levels=annotation_types), 
          trait_type2 = factor(trait_type2, levels=trait_types),
          result_type = factor(result_type, levels=result_types))
@@ -27,8 +175,7 @@ pheno_annt_gene = pheno_annt_gene %>%
 pheno_annt_var = pheno_annt_var %>%
   select(., -sig_cnt) %>%
   pivot_longer(cols = contains('_sig_cnt'), names_to = 'labels', names_repair = 'unique', values_to = 'sig_cnt') %>%
-  mutate(annotation = stringr::str_split(labels, "_sig_cnt") %>% map_chr(., 1)) %>%
-  mutate(annotation = replace(annotation, annotation=='missense', 'missense|LC')) %>%
+  mutate(annotation = stringr::str_split(labels, '_sig_cnt') %>% map_chr(., 1)) %>%
   mutate(annotation = factor(annotation, levels=annotation_types), 
          trait_type2 = factor(trait_type2, levels=trait_types))
 
@@ -183,3 +330,5 @@ print_freq_sig_cor()
 print_freq_sig_cor(test='skat')
 print_freq_sig_cor(test='burden')
 print_freq_sig_cor(data = var_sig, test = 'variant', freq_col='AF', sig_col = 'sig_pheno_cnt')
+
+
