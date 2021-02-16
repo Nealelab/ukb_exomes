@@ -8,6 +8,7 @@ from ukb_exomes.resources import *
 ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
 TESTS = ('skato', 'skat', 'burden')
 TRAIT_TYPES = ('continuous', 'categorical')
+P_VALUE_FIELDS = {'skato': 'Pvalue', 'skat': 'Pvalue_SKAT', 'burden': 'Pvalue_Burden'}
 
 def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, tranche: str = CURRENT_TRANCHE,
                          af_lower: float = None, af_upper: float = None, n_var_min: int = None, random_phenos: bool = False):
@@ -146,13 +147,7 @@ def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', phenos_to_keep: hl.Tab
     var = var.explode_rows(var.gene_id)
     var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
     var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue < level))
-    test_type = test_type.lower()
-    if test_type == 'skat':
-        pvalue = 'Pvalue_SKAT'
-    elif test_type == 'burden':
-        pvalue = 'Pvalue_Burden'
-    else:
-        pvalue = 'Pvalue'
+    pvalue = P_VALUE_FIELDS[test_type.lower()]
     mt = mt.annotate_entries(var_cnt=var[mt.row_key, mt.col_key]['var_cnt'])
     mt = mt.annotate_cols(pheno_gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
                                                                   hl.is_defined(mt[pvalue]) & (mt[pvalue] < level)),
@@ -187,14 +182,14 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
     var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id, 
-                            annotation=hl.if_else(hl.is_definedhl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation),
+                            annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation),
                             coverage=int_full[var.locus].target_mean_dp)
     var = var.explode_rows(var.gene_id)
     var = var.rows()
     mean_coverage = var.group_by('gene_id', 'gene', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
     return mean_coverage
 
-def tie_breaker(l, r):
+def more_cases_tie_breaker(l, r):
     return (hl.case()\
         .when(l.n_cases_both_sexes > r.n_cases_both_sexes, -1)\
         .when(l.n_cases_both_sexes == r.n_cases_both_sexes, 0)\
@@ -222,13 +217,7 @@ def get_random_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skat
         mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation),
                               af=f'AF:({af_lower}, {af_upper}]')
     ht = mt.entries()
-    test_type = test_type.lower()
-    if test_type == 'skat':
-        pvalue = 'Pvalue_SKAT'
-    elif test_type == 'burden':
-        pvalue = 'Pvalue_Burden'
-    else:
-        pvalue = 'Pvalue'
+    pvalue = P_VALUE_FIELDS[test_type.lower()]
     ht = ht.select(pvalue, 'af')
     return ht
 

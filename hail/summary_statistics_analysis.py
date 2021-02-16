@@ -70,7 +70,7 @@ lambda_var = compute_lambda_gc_ht(result_type='variant', af_lower=2e-5)
 #  --------Genes and Phenotypes to Keep----------
 phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name='lambda_gc_skato',lower=0.75, upper=1.5)
 genes_to_keep = get_lambda_filtered_ht(lambda_by_gene, lambda_name='lambda_gc_skato',lower=0.75, upper=1.5)
-phenos_to_remove = get_corr_phenos_ht(r_2=0.5, tie_breaker=tie_breaker)
+phenos_to_remove = get_corr_phenos_ht(r_2=0.5, tie_breaker=more_cases_tie_breaker)
 phenos_to_keep = phenos_to_keep.filter(hl.is_defined(phenos_to_remove.key_by(trait_type = phenos_to_remove.node.trait_type, phenocode = phenos_to_remove.node.phenocode,
                                                                              pheno_sex = phenos_to_remove.node.pheno_sex, coding = phenos_to_remove.node.coding,
                                                                              modifier = phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
