@@ -13,7 +13,6 @@ from ukbb_qc.resources.basics import (
     get_pair_ht_path,
     get_ukbb_data,
     logging_path,
-    release_ht_path,
 )
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE
 from ukbb_qc.slack_creds import slack_token
@@ -95,21 +94,18 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(
-    mt: hl.MatrixTable, unrelated_only: bool, freq_index: int = 0
-) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
     Assumes input MatrixTable has the following annotations:
-        - freq (row annotation containing array of frequency structs)
+        - freq (row annotation containing struct of frequency information)
         - meta (column annotation containing sample metadata struct)
-    Also assumes `freq` annotation was calculated using `annotate_freq` and `meta` annotation contains the fields
+    Also assumes `freq` annotation was calculated using `hl.agg.call_stats` and `meta` annotation contains the fields
     `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
     :param bool unrelated_only: Whether to get doubletons from unrelated samples only.
-    :param int freq_index: Which index of freq struct array to use. Default is 0.
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
     """
@@ -120,7 +116,10 @@ def get_doubletons(
 
     logger.info("Filtering to rows where AC == 2 and homozygote count == 0...")
     mt = mt.filter_rows(
-        (mt.freq[freq_index].AC == 2) & (mt.freq[freq_index].homozygote_count == 0)
+        # Need to check AC[1] and homozygote_count[1] here because
+        # call_stats returns one element for each allele (including reference)
+        (mt.freq.AC[1] == 2)
+        & (mt.freq.homozygote_count[1] == 0)
     )
 
     logger.info("Annotating each doubleton with sample IDs...")
@@ -188,13 +187,8 @@ def main(args):
         mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
         if args.get_doubletons:
-            logger.info("Reading in release HT and selecting frequency field...")
-            release_ht = (
-                hl.read_table(release_ht_path(*tranche_data))
-                .select_globals()
-                .select("freq")
-            )
-            mt = mt.annotate_rows(freq=release_ht[mt.row_key].freq)
+            logger.info("Calculating frequency using call_stats...")
+            mt = mt.annotate_rows(freq=hl.agg.call_stats(mt.GT, mt.alleles))
             ht = get_doubletons(mt, args.unrelated_only)
             ht.write(get_doubleton_ht_path(*tranche_data, args.unrelated_only))
 
