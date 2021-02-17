@@ -148,6 +148,7 @@ def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
 
 def main(args):
 
+    hl.init(log="/doubleton_analysis.log", default_reference="GRCh38")
     data_source = "broad"
     freeze = args.freeze
     tranche_data = (data_source, freeze)
