@@ -189,7 +189,7 @@ def main(args):
                 .select_globals()
                 .select("freq")
             )
-            mt = mt.annotate(freq=release_ht[mt.row_key].freq)
+            mt = mt.annotate_rows(freq=release_ht[mt.row_key].freq)
             ht = get_doubletons(mt, args.unrelated_only)
             ht.write(get_doubleton_ht_path(*tranche_data, args.unrelated_only))
 
