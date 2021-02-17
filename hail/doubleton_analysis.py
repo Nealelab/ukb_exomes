@@ -54,13 +54,6 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     geo_ht = geo_ht.drop("ukbb_app_26041_id")
     logger.info(f"Found {geo_ht.count()} rows in geographical HT...")
 
-    logger.info("Removing samples with missing geographical data...")
-    geo_ht = geo_ht.filter(
-        hl.is_defined(geo_ht.north)
-        & hl.is_defined(geo_ht.east)
-        & hl.is_defined(geo_ht.country)
-    )
-
     logger.info("Mapping country ints to names...")
     # Mapping here: https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=100420
     # Skipping country codes 6, -1, and -3:
@@ -75,6 +68,17 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
         .or_missing()
     )
 
+    logger.info("Removing samples with missing geographical data...")
+    geo_ht = geo_ht.filter(
+        (
+            hl.is_defined(geo_ht.north)
+            & hl.is_defined(geo_ht.east)
+            & hl.is_defined(geo_ht.country)
+        )
+        # NOTE: Samples born in Northern Ireland have no birth coordinates
+        | (geo_ht.country == "Northern Ireland")
+    )
+
     logger.info("Converting north and east coordinates from strings to ints...")
     geo_ht = geo_ht.transmute(north=hl.int(geo_ht.north), east=hl.int(geo_ht.east),)
 
@@ -86,6 +90,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(
         f"Kept {geo_ht.count()} rows after removing samples with missing data..."
     )
+    logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
 def get_doubletons(
@@ -169,7 +174,7 @@ def main(args):
                 else mt.meta.pan_ancestry_meta.pop
             )
         )
-        mt = mt.filter_cols(hl.literal(pops).contains(mt.pop))
+        mt = mt.filter_cols(hl.literal(pops).contains(mt.meta.pop))
 
         logger.info("Filtering MT to samples with geographical information...")
         geo_ht = hl.read_table(geographical_ht_path())
