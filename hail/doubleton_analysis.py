@@ -124,8 +124,8 @@ def get_doubletons(
     )
 
     logger.info("Annotating each doubleton with sample IDs...")
-    mt = mt.annotate_rows(pair=hl.agg.filter(mt.GT.is_het(), hl.agg.collect(mt.s)),)
-    return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1],).rows()
+    mt = mt.annotate_rows(pair=hl.agg.filter(mt.GT.is_het(), hl.agg.collect(mt.s)))
+    return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1]).rows()
 
 
 def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
@@ -167,6 +167,9 @@ def main(args):
 
         logger.info("Reading in adj-filtered hardcalls MT...")
         mt = get_ukbb_data(*tranche_data, adj=True, meta_root="meta")
+
+        logger.info("Filtering to autosomes only...")
+        mt = mt.filter_rows(mt.locus.in_autosome())
 
         logger.info(f"Only including these populations: {pops}")
         mt = mt.annotate_cols(
