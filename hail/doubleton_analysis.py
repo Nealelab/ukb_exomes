@@ -6,9 +6,12 @@ import hail as hl
 from gnomad.utils.slack import slack_notifications
 
 from ukbb_qc.resources.basics import (
+    array_sample_map_ht_path,
+    geographical_ht_path,
+    get_checkpoint_path,
     get_doubleton_ht_path,
-    get_ukbb_data,
     get_pair_ht_path,
+    get_ukbb_data,
     logging_path,
     release_ht_path,
 )
@@ -21,6 +24,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger("doubleton_analysis")
 logger.setLevel(logging.INFO)
+
+
+def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) -> None:
+    """
+    Reads in geographical data Table, maps country ints to names, and removes samples with missing data.
+
+    Overwrites HT at `geographical_ht_path()`.
+
+    Also maps UKBB IDs to exome IDs and converts geographical coordinates from strings into ints.
+
+    Assumes geographical data HT has the following fields:
+        - ukbb_app_26041_id (key)
+        - north 
+        - east
+        - country
+    Also assumes all fields in geographical data HT are strings.
+
+    :param str data_source: One of 'regeneron' or 'broad'. Used to checkpoint geographical HT.
+    :param int freeze: One of the data freezes. Used to checkpoint geographical HT.
+    :param bool: Whether to overwrite existing geographical HT.
+    :return: None
+    """
+    logger.info("Reading in location HT and array sample map HT...")
+    map_ht = hl.read_table(array_sample_map_ht_path())
+    geo_ht = hl.read_table(geographical_ht_path())
+    map_ht = map_ht.key_by("ukbb_app_26041_id")
+    geo_ht = geo_ht.annotate(s=map_ht[geo_ht.key].s).key_by("s")
+    geo_ht = geo_ht.drop("ukbb_app_26041_id")
+    logger.info(f"Found {geo_ht.count()} rows in geographical HT...")
+
+    logger.info("Removing samples with missing geographical data...")
+    geo_ht = geo_ht.filter(
+        hl.is_defined(geo_ht.north)
+        & hl.is_defined(geo_ht.east)
+        & hl.is_defined(geo_ht.country)
+    )
+
+    logger.info("Mapping country ints to names...")
+    # Mapping here: https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=100420
+    # Skipping country codes 6, -1, and -3:
+    # 6 = "Elsewhere", -1 = "Do not know", -3 = "Prefer not to answer"
+    geo_ht = geo_ht.transmute(
+        country=hl.case()
+        .when(geo_ht.country == "1", "England")
+        .when(geo_ht.country == "2", "Wales")
+        .when(geo_ht.country == "3", "Scotland")
+        .when(geo_ht.country == "4", "Northern Ireland")
+        .when(geo_ht.country == "3", "Republic of Ireland")
+        .or_missing()
+    )
+
+    logger.info("Converting north and east coordinates from strings to ints...")
+    geo_ht = geo_ht.transmute(north=hl.int(geo_ht.north), east=hl.int(geo_ht.east),)
+
+    geo_ht = geo_ht.checkpoint(
+        get_checkpoint_path(data_source, freeze, name="geographical_data.ht"),
+        overwrite=True,
+    )
+    geo_ht.write(geographical_ht_path(), overwrite=overwrite)
+    logger.info(
+        f"Kept {geo_ht.count()} rows after removing samples with missing data..."
+    )
 
 
 def get_doubletons(
@@ -89,6 +154,9 @@ def main(args):
     pops = set(args.pops_to_include.split(","))
 
     try:
+        if args.filter_geographical_data:
+            get_samples_with_geo_data(*tranche_data, args.overwrite)
+
         logger.info("Reading in adj-filtered hardcalls MT...")
         mt = get_ukbb_data(*tranche_data, adj=True, meta_root="meta")
 
@@ -100,10 +168,12 @@ def main(args):
                 else mt.meta.pan_ancestry_meta.pop
             )
         )
-        logger.info(
-            f"Removing variants from samples outside of included populations..."
-        )
         mt = mt.filter_cols(hl.literal(pops).contains(mt.pop))
+
+        logger.info("Filtering MT to samples with geographical information...")
+        geo_ht = hl.read_table(geographical_ht_path())
+        mt = mt.annotate_cols(**geo_ht[mt.col_key])
+        mt = mt.filter_cols(hl.is_defined(mt.country))
         mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
         if args.get_doubletons:
@@ -129,6 +199,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "This script extracts pairs of individuals sharing rare doubletons and compares them to ~100k randomly selected sample pairs"
+    )
+    parser.add_argument(
+        "--filter_geographical_data",
+        help="Filter geographical data HT to remove missing data",
+        action="store_true",
     )
     parser.add_argument(
         "--get_doubletons", help="Get samples with doubletons", action="store_true"
