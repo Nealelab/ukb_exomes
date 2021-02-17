@@ -75,8 +75,9 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
             & hl.is_defined(geo_ht.east)
             & hl.is_defined(geo_ht.country)
         )
-        # NOTE: Samples born in Northern Ireland have no birth coordinates
+        # NOTE: Samples born in Ireland have no birth coordinates
         | (geo_ht.country == "Northern Ireland")
+        | (geo_ht.country == "Republic of Ireland")
     )
 
     logger.info("Converting north and east coordinates from strings to ints...")
