@@ -163,8 +163,8 @@ def main(args):
         logger.info(f"Only including these populations: {pops}")
         mt = mt.annotate_cols(
             meta=mt.meta.annotate(
-                pop=mt.meta.hybrid_pop_data.pop
-                if args.use_hybrid_pop
+                pop=mt.meta.gnomad_pc_project_pop_data.pop
+                if args.use_gnomad_pop
                 else mt.meta.pan_ancestry_meta.pop
             )
         )
@@ -223,8 +223,8 @@ if __name__ == "__main__":
         "--pops_to_include", help="Populations to include in this analysis",
     )
     parser.add_argument(
-        "--use_hybrid_pop",
-        help="Use hybrid ancestry assignments when generating LoF matrix summary Table. Will use pan-ancestry assignment if not set",
+        "--use_gnomad_pop",
+        help="Use gnomAD ancestry assignments when generating LoF matrix summary Table. Will use pan-ancestry assignment if not set",
         action="store_true",
     )
     parser.add_argument(
