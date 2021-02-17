@@ -64,7 +64,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
         .when(geo_ht.country == "2", "Wales")
         .when(geo_ht.country == "3", "Scotland")
         .when(geo_ht.country == "4", "Northern Ireland")
-        .when(geo_ht.country == "3", "Republic of Ireland")
+        .when(geo_ht.country == "5", "Republic of Ireland")
         .or_missing()
     )
 
