@@ -94,7 +94,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable,) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
@@ -105,15 +105,9 @@ def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
     `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
-    :param bool unrelated_only: Whether to get doubletons from unrelated samples only.
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
     """
-    if unrelated_only:
-        logger.info("Removing related samples and their variants...")
-        mt = mt.filter_cols(~mt.meta.sample_filters.related)
-        mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-
     logger.info("Filtering to rows where AC == 2 and homozygote count == 0...")
     mt = mt.filter_rows(
         # Need to check AC[1] and homozygote_count[1] here because
@@ -188,8 +182,12 @@ def main(args):
 
         if args.get_doubletons:
             logger.info("Calculating frequency using call_stats...")
+            if args.unrelated_only:
+                logger.info("Removing related samples and their variants...")
+                mt = mt.filter_cols(~mt.meta.sample_filters.related)
+                mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
             mt = mt.annotate_rows(freq=hl.agg.call_stats(mt.GT, mt.alleles))
-            ht = get_doubletons(mt, args.unrelated_only)
+            ht = get_doubletons(mt)
             ht.write(
                 get_doubleton_ht_path(*tranche_data, args.unrelated_only),
                 overwrite=args.overwrite,
