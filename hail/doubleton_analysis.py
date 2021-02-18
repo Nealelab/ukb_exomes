@@ -144,7 +144,7 @@ def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
 
     logger.info("Selecting a second set of 100k random samples...")
     mt = mt.annotate_cols(col_idx=hl.or_missing(~mt.s_1, mt.col_idx))
-    indices = mt.aggregate(
+    indices = mt.aggregate_cols(
         hl.agg.filter(hl.is_defined(mt.col_idx), hl.agg.collect(mt.col_idx()))
     )
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
