@@ -121,12 +121,16 @@ def get_doubletons(mt: hl.MatrixTable) -> hl.Table:
     return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1]).rows()
 
 
-def get_random_pairs(ht: hl.Table, n_pairs: int) -> hl.Table:
+def get_random_pairs(
+    ht: hl.Table, n_pairs: int, data_source: str, freeze: int
+) -> hl.Table:
     """
     Selects specified number of random sample pairs from input Table.
 
     :param hl.Table ht: Input MatrixTable.
     :param int n_pairs: Desired number of sample pairs.
+    :param str data_source: One of 'regeneron' or 'broad'. Used to checkpoint temporary HT.
+    :param int freeze: One of the data freezes. Used to checkpoint temporary HT.
     :return: Table of random sample pairs.
     :rtype: hl.Table
     """
@@ -135,6 +139,10 @@ def get_random_pairs(ht: hl.Table, n_pairs: int) -> hl.Table:
     indices = hl.range(ht.count())
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
     ht = ht.annotate(s_1=rand_indices.contains(hl.int(ht.idx)))
+    ht = ht.checkpoint(
+        get_checkpoint_path(data_source, freeze, name="random_pairs_temp.ht"),
+        overwrite=True,
+    )
 
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
     ht = ht.annotate(idx=hl.or_missing(~ht.s_1, ht.idx))
@@ -192,7 +200,7 @@ def main(args):
             )
 
         if args.get_random_pairs:
-            ht = get_random_pairs(mt.cols(), args.n_pairs)
+            ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
             ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
     finally:
