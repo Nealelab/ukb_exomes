@@ -121,29 +121,27 @@ def get_doubletons(mt: hl.MatrixTable) -> hl.Table:
     return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1]).rows()
 
 
-def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
+def get_random_pairs(ht: hl.Table, n_pairs: int) -> hl.Table:
     """
-    Selects specified number of random sample pairs from input MatrixTable.
+    Selects specified number of random sample pairs from input Table.
 
-    :param hl.MatrixTable mt: Input MatrixTable.
+    :param hl.Table ht: Input MatrixTable.
     :param int n_pairs: Desired number of sample pairs.
     :return: Table of random sample pairs.
     :rtype: hl.Table
     """
-    logger.info("Selecting 100k random samples...")
-    mt = mt.add_col_index()
-    indices = hl.range(mt.count_cols())
+    logger.info(f"Selecting {n_pairs} random samples...")
+    ht = ht.add_index()
+    indices = hl.range(ht.count())
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
-    mt = mt.annotate_cols(s_1=rand_indices.contains(mt.s))
+    ht = ht.annotate(s_1=rand_indices.contains(hl.int(ht.idx)))
 
-    logger.info("Selecting a second set of 100k random samples...")
-    mt = mt.annotate_cols(col_idx=hl.or_missing(~mt.s_1, mt.col_idx))
-    indices = mt.aggregate_cols(
-        hl.agg.filter(hl.is_defined(mt.col_idx), hl.agg.collect(mt.col_idx()))
-    )
+    logger.info(f"Selecting a second set of {n_pairs} random samples...")
+    ht = ht.annotate(idx=hl.or_missing(~ht.s_1, ht.idx))
+    indices = ht.aggregate(hl.agg.collect(ht.idx))
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
-    mt = mt.annotate_cols(s_2=rand_indices.contains(mt.s))
-    return mt.cols()
+    ht = ht.annotate(s_2=rand_indices.contains(ht.s))
+    return ht
 
 
 def main(args):
@@ -194,7 +192,7 @@ def main(args):
             )
 
         if args.get_random_pairs:
-            ht = get_random_pairs(mt, args.n_pairs)
+            ht = get_random_pairs(mt.cols(), args.n_pairs)
             ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
     finally:
