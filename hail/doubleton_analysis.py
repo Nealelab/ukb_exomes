@@ -145,9 +145,8 @@ def get_random_pairs(
     )
 
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
-    ht = ht.annotate(idx=hl.or_missing(~ht.s_1, ht.idx))
-    indices = ht.aggregate(hl.agg.collect(ht.idx))
-    rand_indices = hl.shuffle(indices)[: n_pairs - 1]
+    new_indices = hl.filter(lambda x: ~rand_indices.contains(x), indices)
+    rand_indices = hl.shuffle(new_indices)[: n_pairs - 1]
     ht = ht.annotate(s_2=rand_indices.contains(ht.s))
     return ht
 
