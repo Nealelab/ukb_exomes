@@ -94,7 +94,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable,) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
