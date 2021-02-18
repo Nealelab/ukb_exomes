@@ -190,11 +190,14 @@ def main(args):
             logger.info("Calculating frequency using call_stats...")
             mt = mt.annotate_rows(freq=hl.agg.call_stats(mt.GT, mt.alleles))
             ht = get_doubletons(mt, args.unrelated_only)
-            ht.write(get_doubleton_ht_path(*tranche_data, args.unrelated_only))
+            ht.write(
+                get_doubleton_ht_path(*tranche_data, args.unrelated_only),
+                overwrite=args.overwrite,
+            )
 
         if args.get_random_pairs:
             ht = get_random_pairs(mt, args.n_pairs)
-            ht.write(get_pair_ht_path(*tranche_data))
+            ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
