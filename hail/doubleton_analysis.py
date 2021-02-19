@@ -155,7 +155,7 @@ def get_random_pairs(
     new_indices = list(set(indices) - set(rand_indices))
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
     rand_indices = random.choices(new_indices, k=n_pairs)
-    ht = ht.annotate(s2=hl.literal(rand_indices).contains(ht.s))
+    ht = ht.annotate(s2=hl.literal(rand_indices).contains(ht.idx))
     return ht
 
 
