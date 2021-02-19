@@ -127,7 +127,7 @@ def get_doubletons(mt: hl.MatrixTable, freq_index: int) -> hl.Table:
 
     logger.info("Annotating each doubleton with sample IDs...")
     mt = mt.annotate_rows(pair=hl.agg.filter(mt.GT.is_het(), hl.agg.collect(mt.s)))
-    return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1]).rows()
+    return mt.annotate_rows(s1=mt.pair[0], s2=mt.pair[1]).rows()
 
 
 def get_random_pairs(
@@ -147,7 +147,7 @@ def get_random_pairs(
     ht = ht.add_index()
     indices = hl.eval(hl.range(ht.count()))
     rand_indices = random.choices(indices, k=n_pairs)
-    ht = ht.annotate(s_1=hl.literal(rand_indices).contains(ht.idx))
+    ht = ht.annotate(s1=hl.literal(rand_indices).contains(ht.idx))
     ht = ht.checkpoint(
         get_checkpoint_path(data_source, freeze, name="random_pairs_temp.ht"),
         overwrite=True,
@@ -156,7 +156,7 @@ def get_random_pairs(
     new_indices = list(set(indices) - set(rand_indices))
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
     rand_indices = random.choices(new_indices, k=n_pairs)
-    ht = ht.annotate(s_2=hl.literal(rand_indices).contains(ht.s))
+    ht = ht.annotate(s2=hl.literal(rand_indices).contains(ht.s))
     return ht
 
 
@@ -217,6 +217,10 @@ def main(args):
             logger.info("Calculating frequency using call_stats...")
             mt = mt.annotate_rows(new_freq=hl.agg.call_stats(mt.GT, mt.alleles))
             ht = get_doubletons(mt, freq_idx)
+            ht = ht.annotate(
+                s1_locations=hl.struct(**{geo_ht[ht.s1]}),
+                s2_locations=hl.struct(**{geo_ht[ht.s2]}),
+            )
             ht.write(
                 get_doubleton_ht_path(*tranche_data, args.unrelated_only),
                 overwrite=args.overwrite,
@@ -224,6 +228,10 @@ def main(args):
 
         if args.get_random_pairs:
             ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
+            ht = ht.annotate(
+                s1_locations=hl.struct(**{geo_ht[ht.s1]}),
+                s2_locations=hl.struct(**{geo_ht[ht.s2]}),
+            )
             ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
     finally:
