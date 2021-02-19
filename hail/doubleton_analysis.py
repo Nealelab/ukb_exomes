@@ -1,5 +1,6 @@
 import argparse
 import logging
+import random
 
 import hail as hl
 
@@ -13,9 +14,11 @@ from ukbb_qc.resources.basics import (
     get_pair_ht_path,
     get_ukbb_data,
     logging_path,
+    release_ht_path,
 )
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE
 from ukbb_qc.slack_creds import slack_token
+from ukbb_qc.utils.utils import index_globals
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -94,26 +97,32 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable, freq_index: int) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
     Assumes input MatrixTable has the following annotations:
         - freq (row annotation containing struct of frequency information)
+        - new_freq (row annotation containing struct of frequency information calculated after removing samples)
         - meta (column annotation containing sample metadata struct)
-    Also assumes `freq` annotation was calculated using `hl.agg.call_stats` and `meta` annotation contains the fields
-    `sample_filters` and `related`.
+    Also assumes `freq` annotation was calculated using `annotate_freq`, 
+    `new_freq` annotation was calculated using `hl.agg.call_stats`,
+     and `meta` annotation contains the fields `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
+    :param int freq_index: Which index of `freq` annotation to use. 
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
     """
-    logger.info("Filtering to rows where AC == 2 and homozygote count == 0...")
+    logger.info(
+        "Filtering to rows where original AC == 2, homozygote count == 0, and new AC == 2..."
+    )
     mt = mt.filter_rows(
         # Need to check AC[1] and homozygote_count[1] here because
         # call_stats returns one element for each allele (including reference)
-        (mt.freq.AC[1] == 2)
-        & (mt.freq.homozygote_count[1] == 0)
+        (mt.freq[freq_index].AC == 2)
+        & (mt.freq[freq_index].homozygote_count == 0)
+        & (mt.new_freq.AC[0] == 2)
     )
 
     logger.info("Annotating each doubleton with sample IDs...")
@@ -136,18 +145,18 @@ def get_random_pairs(
     """
     logger.info(f"Selecting {n_pairs} random samples...")
     ht = ht.add_index()
-    indices = hl.range(ht.count())
-    rand_indices = hl.shuffle(indices)[: n_pairs - 1]
-    ht = ht.annotate(s_1=rand_indices.contains(hl.int(ht.idx)))
+    indices = hl.eval(hl.range(ht.count()))
+    rand_indices = random.choices(indices, k=n_pairs)
+    ht = ht.annotate(s_1=hl.literal(rand_indices).contains(ht.idx))
     ht = ht.checkpoint(
         get_checkpoint_path(data_source, freeze, name="random_pairs_temp.ht"),
         overwrite=True,
     )
 
+    new_indices = list(set(indices) - set(rand_indices))
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
-    new_indices = hl.filter(lambda x: ~rand_indices.contains(x), indices)
-    rand_indices = hl.shuffle(new_indices)[: n_pairs - 1]
-    ht = ht.annotate(s_2=rand_indices.contains(ht.s))
+    rand_indices = random.choices(new_indices, k=n_pairs)
+    ht = ht.annotate(s_2=hl.literal(rand_indices).contains(ht.s))
     return ht
 
 
@@ -165,6 +174,12 @@ def main(args):
 
         logger.info("Reading in adj-filtered hardcalls MT...")
         mt = get_ukbb_data(*tranche_data, adj=True, meta_root="meta")
+        freq_ht = (
+            hl.read_table(release_ht_path(*tranche_data))
+            .select_globals("freq_meta")
+            .select("freq")
+        )
+        mt = mt.annotate_rows(freq=freq_ht[mt.row_key].freq)
 
         logger.info("Filtering to autosomes only...")
         mt = mt.filter_rows(mt.locus.in_autosome())
@@ -186,13 +201,22 @@ def main(args):
         mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
         if args.get_doubletons:
-            logger.info("Calculating frequency using call_stats...")
+            logger.info(f"Getting freq index for {pops}...")
+            if len(pops) == 1:
+                freq_idx = index_globals(
+                    hl.eval(freq_ht.freq_meta), dict(group=["adj"], pops=pops)
+                )
+            else:
+                freq_idx = 0
+
             if args.unrelated_only:
                 logger.info("Removing related samples and their variants...")
                 mt = mt.filter_cols(~mt.meta.sample_filters.related)
                 mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-            mt = mt.annotate_rows(freq=hl.agg.call_stats(mt.GT, mt.alleles))
-            ht = get_doubletons(mt)
+
+            logger.info("Calculating frequency using call_stats...")
+            mt = mt.annotate_rows(new_freq=hl.agg.call_stats(mt.GT, mt.alleles))
+            ht = get_doubletons(mt, freq_idx)
             ht.write(
                 get_doubleton_ht_path(*tranche_data, args.unrelated_only),
                 overwrite=args.overwrite,
