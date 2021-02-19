@@ -18,7 +18,6 @@ from ukbb_qc.resources.basics import (
 )
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE
 from ukbb_qc.slack_creds import slack_token
-from ukbb_qc.utils.utils import index_globals
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -97,7 +96,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable, freq_index: int) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable, freq_index: int = 0) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
@@ -110,7 +109,7 @@ def get_doubletons(mt: hl.MatrixTable, freq_index: int) -> hl.Table:
      and `meta` annotation contains the fields `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
-    :param int freq_index: Which index of `freq` annotation to use. 
+    :param int freq_index: Which index of `freq` annotation to use. Default is 0.
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
     """
@@ -201,14 +200,6 @@ def main(args):
         mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
         if args.get_doubletons:
-            logger.info(f"Getting freq index for {pops}...")
-            if len(pops) == 1:
-                freq_idx = index_globals(
-                    hl.eval(freq_ht.freq_meta), dict(group=["adj"], pops=pops)
-                )
-            else:
-                freq_idx = 0
-
             if args.unrelated_only:
                 logger.info("Removing related samples and their variants...")
                 mt = mt.filter_cols(~mt.meta.sample_filters.related)
@@ -216,10 +207,10 @@ def main(args):
 
             logger.info("Calculating frequency using call_stats...")
             mt = mt.annotate_rows(new_freq=hl.agg.call_stats(mt.GT, mt.alleles))
-            ht = get_doubletons(mt, freq_idx)
+            ht = get_doubletons(mt)
             ht = ht.annotate(
-                s1_locations=hl.struct(**{geo_ht[ht.s1]}),
-                s2_locations=hl.struct(**{geo_ht[ht.s2]}),
+                s1_locations=hl.struct(**geo_ht[ht.s1]),
+                s2_locations=hl.struct(**geo_ht[ht.s2]),
             )
             ht.write(
                 get_doubleton_ht_path(*tranche_data, args.unrelated_only),
@@ -229,8 +220,8 @@ def main(args):
         if args.get_random_pairs:
             ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
             ht = ht.annotate(
-                s1_locations=hl.struct(**{geo_ht[ht.s1]}),
-                s2_locations=hl.struct(**{geo_ht[ht.s2]}),
+                s1_locations=hl.struct(**geo_ht[ht.s1]),
+                s2_locations=hl.struct(**geo_ht[ht.s2]),
             )
             ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
