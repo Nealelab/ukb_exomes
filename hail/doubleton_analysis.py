@@ -94,7 +94,7 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
+def get_doubletons(mt: hl.MatrixTable) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
@@ -105,15 +105,9 @@ def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
     `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
-    :param bool unrelated_only: Whether to get doubletons from unrelated samples only.
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
     """
-    if unrelated_only:
-        logger.info("Removing related samples and their variants...")
-        mt = mt.filter_cols(~mt.meta.sample_filters.related)
-        mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-
     logger.info("Filtering to rows where AC == 2 and homozygote count == 0...")
     mt = mt.filter_rows(
         # Need to check AC[1] and homozygote_count[1] here because
@@ -127,29 +121,34 @@ def get_doubletons(mt: hl.MatrixTable, unrelated_only: bool,) -> hl.Table:
     return mt.annotate_rows(s_1=mt.pair[0], s_2=mt.pair[1]).rows()
 
 
-def get_random_pairs(mt: hl.MatrixTable, n_pairs: int) -> hl.Table:
+def get_random_pairs(
+    ht: hl.Table, n_pairs: int, data_source: str, freeze: int
+) -> hl.Table:
     """
-    Selects specified number of random sample pairs from input MatrixTable.
+    Selects specified number of random sample pairs from input Table.
 
-    :param hl.MatrixTable mt: Input MatrixTable.
+    :param hl.Table ht: Input MatrixTable.
     :param int n_pairs: Desired number of sample pairs.
+    :param str data_source: One of 'regeneron' or 'broad'. Used to checkpoint temporary HT.
+    :param int freeze: One of the data freezes. Used to checkpoint temporary HT.
     :return: Table of random sample pairs.
     :rtype: hl.Table
     """
-    logger.info("Selecting 100k random samples...")
-    mt = mt.add_col_index()
-    indices = hl.range(mt.count_cols())
+    logger.info(f"Selecting {n_pairs} random samples...")
+    ht = ht.add_index()
+    indices = hl.range(ht.count())
     rand_indices = hl.shuffle(indices)[: n_pairs - 1]
-    mt = mt.annotate_cols(s_1=rand_indices.contains(mt.s))
-
-    logger.info("Selecting a second set of 100k random samples...")
-    mt = mt.annotate_cols(col_idx=hl.or_missing(~mt.s_1, mt.col_idx))
-    indices = mt.aggregate(
-        hl.agg.filter(hl.is_defined(mt.col_idx), hl.agg.collect(mt.col_idx()))
+    ht = ht.annotate(s_1=rand_indices.contains(hl.int(ht.idx)))
+    ht = ht.checkpoint(
+        get_checkpoint_path(data_source, freeze, name="random_pairs_temp.ht"),
+        overwrite=True,
     )
-    rand_indices = hl.shuffle(indices)[: n_pairs - 1]
-    mt = mt.annotate_cols(s_2=rand_indices.contains(mt.s))
-    return mt.cols()
+
+    logger.info(f"Selecting a second set of {n_pairs} random samples...")
+    new_indices = hl.filter(lambda x: ~rand_indices.contains(x), indices)
+    rand_indices = hl.shuffle(new_indices)[: n_pairs - 1]
+    ht = ht.annotate(s_2=rand_indices.contains(ht.s))
+    return ht
 
 
 def main(args):
@@ -188,15 +187,19 @@ def main(args):
 
         if args.get_doubletons:
             logger.info("Calculating frequency using call_stats...")
+            if args.unrelated_only:
+                logger.info("Removing related samples and their variants...")
+                mt = mt.filter_cols(~mt.meta.sample_filters.related)
+                mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
             mt = mt.annotate_rows(freq=hl.agg.call_stats(mt.GT, mt.alleles))
-            ht = get_doubletons(mt, args.unrelated_only)
+            ht = get_doubletons(mt)
             ht.write(
                 get_doubleton_ht_path(*tranche_data, args.unrelated_only),
                 overwrite=args.overwrite,
             )
 
         if args.get_random_pairs:
-            ht = get_random_pairs(mt, args.n_pairs)
+            ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
             ht.write(get_pair_ht_path(*tranche_data), overwrite=args.overwrite)
 
     finally:
