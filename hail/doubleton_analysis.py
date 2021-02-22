@@ -96,12 +96,16 @@ def get_samples_with_geo_data(data_source: str, freeze: int, overwrite: bool) ->
     logger.info(f"Country counter: {geo_ht.aggregate(hl.agg.counter(geo_ht.country))}")
 
 
-def get_doubletons(mt: hl.MatrixTable, freq_index: int = 0) -> hl.Table:
+def get_doubletons(
+    mt: hl.MatrixTable, unrelated_only: bool, freq_index: int = 0
+) -> hl.Table:
     """
     Filters input MatrixTable to doubletons and annotates each doubletons with relevant sample IDs.
 
     Assumes input MatrixTable has the following annotations:
         - freq (row annotation containing struct of frequency information)
+        - relateds_freq (row annotation containing struct of frequency information calculated before removing relateds)
+            Required only if `unrelated_only` is True.
         - new_freq (row annotation containing struct of frequency information calculated after removing samples)
         - meta (column annotation containing sample metadata struct)
     Also assumes `freq` annotation was calculated using `annotate_freq`, 
@@ -109,6 +113,7 @@ def get_doubletons(mt: hl.MatrixTable, freq_index: int = 0) -> hl.Table:
      and `meta` annotation contains the fields `sample_filters` and `related`.
 
     :param hl.MatrixTable mt: Input MatrixTable.
+    :param unrelated_only: Whether MT is filtered to unrelated samples only.
     :param int freq_index: Which index of `freq` annotation to use. Default is 0.
     :return: Table with doubletons and relevant sample IDs for each doubleton.
     :rtype: hl.Table
@@ -123,6 +128,12 @@ def get_doubletons(mt: hl.MatrixTable, freq_index: int = 0) -> hl.Table:
         & (mt.freq[freq_index].homozygote_count == 0)
         & (mt.new_freq.AC[0] == 2)
     )
+
+    if unrelated_only:
+        logger.info(
+            "Filtering to rows where AC calculated with all relateds was less than or equal to 2..."
+        )
+        mt = mt.filter_rows(mt.relateds_freq.AC[0] <= 2)
 
     logger.info("Annotating each doubleton with sample IDs...")
     mt = mt.annotate_rows(pair=hl.agg.filter(mt.GT.is_het(), hl.agg.collect(mt.s)))
@@ -201,13 +212,18 @@ def main(args):
 
         if args.get_doubletons:
             if args.unrelated_only:
+                logger.info("Calculating frequency with all relateds...")
+                mt = mt.annotate_rows(
+                    relateds_freq=hl.agg.call_stats(mt.GT, mt.alleles)
+                )
+
                 logger.info("Removing related samples and their variants...")
                 mt = mt.filter_cols(~mt.meta.sample_filters.related)
                 mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
             logger.info("Calculating frequency using call_stats...")
             mt = mt.annotate_rows(new_freq=hl.agg.call_stats(mt.GT, mt.alleles))
-            ht = get_doubletons(mt)
+            ht = get_doubletons(mt, args.unrelated_only)
             ht = ht.annotate(
                 s1_locations=hl.struct(**geo_ht[ht.s1]),
                 s2_locations=hl.struct(**geo_ht[ht.s2]),
@@ -220,7 +236,7 @@ def main(args):
         if args.get_random_pairs:
             ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
             ht = ht.transmute(
-                s1=hl.or_missing(ht.s1, ht.s,), s2=hl.or_missing(ht.s2, ht.s)
+                s1=hl.or_missing(ht.s1, ht.s), s2=hl.or_missing(ht.s2, ht.s)
             )
             ht = ht.annotate(
                 s1_locations=hl.struct(**geo_ht[ht.s1]),
