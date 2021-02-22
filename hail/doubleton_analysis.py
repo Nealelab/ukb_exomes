@@ -236,7 +236,7 @@ def main(args):
         if args.get_random_pairs:
             ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
             ht = ht.transmute(
-                s1=hl.or_missing(ht.s1, ht.s,), s2=hl.or_missing(ht.s2, ht.s)
+                s1=hl.or_missing(ht.s1, ht.s), s2=hl.or_missing(ht.s2, ht.s)
             )
             ht = ht.annotate(
                 s1_locations=hl.struct(**geo_ht[ht.s1]),
