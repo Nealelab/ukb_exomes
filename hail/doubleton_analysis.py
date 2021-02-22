@@ -146,7 +146,7 @@ def get_random_pairs(
     ht = ht.add_index()
     indices = hl.eval(hl.range(ht.count()))
     rand_indices = random.choices(indices, k=n_pairs)
-    ht = ht.annotate(s1=hl.literal(rand_indices).contains(ht.idx))
+    ht = ht.annotate(s1=hl.literal(rand_indices).contains(hl.int(ht.idx)))
     ht = ht.checkpoint(
         get_checkpoint_path(data_source, freeze, name="random_pairs_temp.ht"),
         overwrite=True,
@@ -155,7 +155,7 @@ def get_random_pairs(
     new_indices = list(set(indices) - set(rand_indices))
     logger.info(f"Selecting a second set of {n_pairs} random samples...")
     rand_indices = random.choices(new_indices, k=n_pairs)
-    ht = ht.annotate(s2=hl.literal(rand_indices).contains(ht.idx))
+    ht = ht.annotate(s2=hl.literal(rand_indices).contains(hl.int(ht.idx)))
     return ht
 
 
@@ -219,6 +219,9 @@ def main(args):
 
         if args.get_random_pairs:
             ht = get_random_pairs(mt.cols(), args.n_pairs, *tranche_data)
+            ht = ht.transmute(
+                s1=hl.or_missing(ht.s1, ht.s,), s2=hl.or_missing(ht.s2, ht.s)
+            )
             ht = ht.annotate(
                 s1_locations=hl.struct(**geo_ht[ht.s1]),
                 s2_locations=hl.struct(**geo_ht[ht.s2]),
