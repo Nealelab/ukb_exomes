@@ -1,7 +1,7 @@
-packages = c('dplyr', 'GGally', 'reshape2',  'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 
+packages = c('dplyr', 'GGally', 'reshape2',  'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 'grid',
               'RCurl', 'trelliscopejs', 'tidyverse', 'Hmisc', 'devtools', 'broom', 'plotly', 'slackr', 'magrittr', 'gapminder', 'readr', 
               'purrr', 'skimr', 'gganimate', 'gghighlight', 'plotROC', 'naniar', 'BiocManager', 'cowplot', 'corrplot', 'corrr', 'ggridges', 
-              'ggpubr', 'meta', 'tidygraph', 'pbapply', 'RMySQL', 'egg', 'ggwordcloud', 'patchwork', 'ggrastr', 'ggthemes', 'STRINGdb', 'ggrepel')
+              'ggpubr', 'meta', 'tidygraph', 'pbapply', 'RMySQL', 'egg', 'ggwordcloud', 'patchwork', 'ggrastr', 'ggthemes', 'STRINGdb', 'ggrepel', 'LowMACA')
 
 for(p in packages){
   if(!require(p, character.only = T)){
@@ -10,6 +10,7 @@ for(p in packages){
 }
 
 # BiocManager::install('STRINGdb')
+# BiocManager::install("LowMACA")
 # devtools::install_github('VPetukhov/ggrastr')
 # devtools::install_github('hafen/trelliscopejs')
 # devtools::install_github('thomasp85/patchwork')
@@ -19,8 +20,8 @@ annotation_types = c('pLoF', 'missense|LC', 'synonymous')
 annotation_names = c('pLoF', 'Missense', 'Synonymous')
 result_types = c('skato', 'skat', 'burden')
 result_names = c('SKAT-O', 'SKAT', 'Burden Test')
-af_types = c('AF:(None, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
-af_names = c('AF:( , 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
+af_types = c('AF:(None, 0.0001]', 'AF:(2e-05, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
+af_names = c('AF:( , 0.0001]', 'AF:(2e-5, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
 caf_types = c('CAF:(None, 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, None]')
 caf_names = c('CAF:( , 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, )')
 
@@ -31,12 +32,13 @@ names(annotation_names) = annotation_types
 
 annotation_color_scale = scale_colour_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 annotation_fill_scale = scale_fill_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
-themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 20, face = 'bold'),
-                  axis.title = element_text(color = 'Black', size = 18, face = 'bold'), 
-                  legend.title = element_text(color = 'Black', size = 17, face = 'bold'), 
-                  legend.text = element_text(color = 'Black', size = 17), 
-                  legend.position = 'top', legend.box = 'vertical', 
-                  strip.text = element_text(color = 'Black', size = 17))
+themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'),
+               axis.text = element_text(color = 'Black', size = 5),
+               axis.title = element_text(color = 'Black', size = 7, face = 'bold'),
+               legend.title = element_text(color = 'Black', size = 5, face = 'bold'),
+               legend.text = element_text(color = 'Black', size = 5),
+               legend.position = 'top', legend.box = 'vertical',
+               strip.text = element_text(color = 'Black', size = 7))
 label_type = labeller(trait_type2=trait_type_names, annotation=annotation_names, result_type=result_names, CAF_range=caf_names, AF_range=af_names)
 
 get_ukb_data_url = function() {
@@ -52,6 +54,15 @@ get_freq_interval = function(freq){
     freq > 1e-1  ~ '(0.1, )', 
   )
   return(interval)
+}
+
+get_mean_prop_interval = function(mean_proportion){
+  bin = case_when(
+    mean_proportion <= 0.2  ~ '[0, 0.2]',
+    mean_proportion <= 0.8  ~ '(0.2, 0.8]',
+    mean_proportion <= 1  ~ '(0.8, 1]',
+  )
+  return(bin)
 }
 
 set_freq_bins = function(data, freq_col='AF', interval=0.001){
@@ -85,17 +96,20 @@ get_matched_data = function(data, annt1='lof', freq_col, interval=0.01){
 sig_cnt_summary = function(data, annt_col='annotation', sig_col='sig_cnt'){
   if(is.null(annt_col)){
     sums = data %>%
-      na.omit() %>%
-      summarise(means=mean(get(sig_col), na.rm=TRUE),
-                medians=median(get(sig_col), na.rm=TRUE),
-                props=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T))
+      summarise(mean=mean(get(sig_col), na.rm=TRUE),
+                median=median(get(sig_col), na.rm=TRUE),
+                prop=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T),
+                sig_cnt=sum(get(sig_col)>0, na.rm = T),
+                cnt=n())
   }else{
     sums = data %>%
-      na.omit() %>%
       group_by(get(annt_col)) %>%
-      summarise(means=mean(get(sig_col), na.rm=TRUE),
-                medians=median(get(sig_col), na.rm=TRUE),
-                props=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T))}
+      summarise(mean=mean(get(sig_col), na.rm=TRUE),
+                median=median(get(sig_col), na.rm=TRUE),
+                prop=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T),
+                sig_cnt=sum(get(sig_col)>0, na.rm = T),
+                cnt=n())
+    colnames(sums)[1] = annt_col}
   return(sums)
 }
 
@@ -123,11 +137,11 @@ print_freq_sig_cor = function(data=gene_sig, test='skato', freq_col='caf', sig_c
 match_subset_by_freq = function(ref_data, subset, freq_col='caf', id_col='gene_id', sig_col='sig_cnt',
                                     interval=0.01, sim_times=5, seed=12345){
   ref_data = as.data.frame(ref_data)
-  gene_subset = as.data.frame(gene_subset)
+  subset = as.data.frame(subset)
 
   ref_data = set_freq_bins(ref_data, freq_col, interval)
-  sub_data = ref_data %>% filter(get(id_col) %in% gene_subset[, id_col])
-  remain_data = ref_data %>% filter(!(get(id_col) %in% gene_subset[, id_col]))
+  sub_data = ref_data %>% filter(get(id_col) %in% subset[, id_col])
+  remain_data = ref_data %>% filter(!(get(id_col) %in% subset[, id_col]))
   bin_sum = sub_data %>% count(bin_labels)
 
   set.seed(seed)
