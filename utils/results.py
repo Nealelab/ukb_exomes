@@ -10,8 +10,8 @@ TESTS = ('skato', 'skat', 'burden')
 TRAIT_TYPES = ('continuous', 'categorical')
 P_VALUE_FIELDS = {'skato': 'Pvalue', 'skat': 'Pvalue_SKAT', 'burden': 'Pvalue_Burden'}
 
-def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, tranche: str = CURRENT_TRANCHE,
-                         af_lower: float = None, af_upper: float = None, n_var_min: int = None, random_phenos: bool = False):
+def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, af_lower: float = None, af_upper: float = None,
+                         n_var_min: int = None, coverage_min: int=None, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche, random_phenos=random_phenos))
     if result_type == 'gene':  # Gene Info
         af = get_caf_info_ht(tranche)
@@ -22,6 +22,10 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
             mt = mt.filter_rows(mt.CAF <= af_upper)
         if n_var_min is not None:
             mt = mt.filter_rows(mt.total_variants >= n_var_min)
+        if coverage_min is not None:
+            coverage_ht = compute_mean_coverage_ht(tranche)
+            mt = mt.annotate_rows(mean_coverage=coverage_ht[mt.row_key].mean_coverage)
+            mt = mt.filter_rows(mean_coverage > coverage_min)
         if by_annotation:
             mt = mt.select_cols('n_cases', 
                                 lambda_gc_skato=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
@@ -54,15 +58,16 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
         if af_upper is not None:
             mt = mt.filter_rows(mt.AF <= af_upper)
         if by_annotation:
+            mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
             lambda_gc = hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
             mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({af_lower}, {af_upper}]')
-            mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
             mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_variant': mt.lambda_gc[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')}, )
         else:
             lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
             mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({af_lower}, {af_upper}]')
         ht = mt.cols()
     return ht
+
 
 def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
     pheno = get_ukb_pheno_mt()
@@ -110,8 +115,7 @@ def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, g
                               sig_gene_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level), 
                               sig_gene_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
     else:
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation),
-                              sig_pheno_cnt=hl.agg.sum(mt.Pvalue < level))
+        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation), sig_pheno_cnt=hl.agg.sum(mt.Pvalue < level))
         # Count Significant Hits per Phenotype for each Test
         mt = mt.annotate_cols(sig_var_cnt=hl.agg.sum(mt.Pvalue < level))
     return mt
@@ -129,8 +133,8 @@ def get_sig_cnt_annt_ht(result_type: str = 'gene', phenos_to_keep: hl.Table = No
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt_skato', 'sig_cnt_skat', 'sig_cnt_burden')
         ht = ht.annotate(**{f'{annotation}_sig_cnt_{test}': ht[f'sig_cnt_{test}'][annotation] for annotation in ANNOTATIONS for test in TESTS})
     else:
-        mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)), )
         mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
+        mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)), )
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt')
         ht = ht.annotate(**{f'{annotation}_sig_cnt': ht.sig_cnt[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')}, )
     return ht
@@ -178,15 +182,17 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
                             pct_samples_20x=int_sex.pct_samples_20x['XX'])
     int_full = int_auto.union(int_sex)
 
-    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
+    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche)).rows()
     vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
-    var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id, 
-                            annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation),
-                            coverage=int_full[var.locus].target_mean_dp)
-    var = var.explode_rows(var.gene_id)
-    var = var.rows()
-    mean_coverage = var.group_by('gene_id', 'gene', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
+    var = var.annotate(csq=vep[var.key].vep.worst_csq_by_gene_canonical)
+    var = var.explode(var.csq)
+    var = var.annotate(gene_id = var.csq.gene_id,
+                       gene_symbol = var.csq.gene_symbol,
+                       annotation = annotation_case_builder(var.csq),
+                       coverage=int_full[var.locus].target_mean_dp)
+    var = var.annotate(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation),)
+    mean_coverage = var.group_by('gene_id', 'gene_symbol', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
     return mean_coverage
 
 def more_cases_tie_breaker(l, r):
@@ -214,8 +220,7 @@ def get_random_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skat
         if af_upper is not None:
             af = af.filter(af.AF <= af_upper)
         mt = mt.filter_rows(hl.is_defined(af.index(mt['locus'], mt['alleles'])))
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation),
-                              af=f'AF:({af_lower}, {af_upper}]')
+        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation), af=f'AF:({af_lower}, {af_upper}]')
     ht = mt.entries()
     pvalue = P_VALUE_FIELDS[test_type.lower()]
     ht = ht.select(pvalue, 'af')
