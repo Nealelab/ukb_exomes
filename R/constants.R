@@ -34,11 +34,13 @@ annotation_color_scale = scale_colour_manual(name = 'Annotation', values = color
 annotation_fill_scale = scale_fill_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'),
                axis.text = element_text(color = 'Black', size = 5),
+               axis.line = element_line(size=0.5),
                axis.title = element_text(color = 'Black', size = 7, face = 'bold'),
                legend.title = element_text(color = 'Black', size = 5, face = 'bold'),
                legend.text = element_text(color = 'Black', size = 5),
                legend.position = 'top', legend.box = 'vertical',
-               strip.text = element_text(color = 'Black', size = 7))
+               strip.text = element_text(color = 'Black', size = 7),
+               strip.background = element_rect( color="black", size=0.5, linetype="solid") )
 label_type = labeller(trait_type2=trait_type_names, annotation=annotation_names, result_type=result_names, CAF_range=caf_names, AF_range=af_names)
 
 get_ukb_data_url = function() {
