@@ -86,8 +86,8 @@ def compute_lambdas_by_expected_ac_ht(ac_breaks: list=[1, 10, 100, 1000, 10000, 
     mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
     mt = mt.annotate_cols(lambda_gc0 = hl.agg.filter(mt.expected_AC <= ac_breaks[0], hl.methods.statgen._lambda_gc_agg(mt.Pvalue)))
     for i in list(range(0, len(ac_breaks)-1)):
-        mt = mt.annotate_cols({f'lambda_gc{ac_breaks[i]}': hl.agg.filter((mt.expected_AC > ac_breaks[i]) & (mt.expected_AC <= ac_breaks[i+1]), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
-    mt = mt.annotate_cols({f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter(mt.expected_AC > ac_breaks[-1], hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
+        mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[i]}': hl.agg.filter((mt.expected_AC > ac_breaks[i]) & (mt.expected_AC <= ac_breaks[i+1]), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
+    mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter(mt.expected_AC > ac_breaks[-1], hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
     return mt.cols()
 
 def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: int = None, coverage_min: int = None, random_phenos: bool = False, 

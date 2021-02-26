@@ -140,6 +140,11 @@ figure3d = function(save_plot=F){
 }
 
 figure3 = function(){
+  p3a = figure3a()
+  p3b = figure3b()
+  p3c = figure3c()
+  p3d = figure3d()
+
   png('figure3.png', height=4, width=6, units = 'in', res=300)
   print(ggarrange(p3a, p3b, p3c, p3d, ncol = 2, nrow=2, labels = c('a', 'b', 'c', 'd'),
                   label.args = list(gp=gpar(font=2, cex=1), vjust=1)))
