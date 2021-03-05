@@ -3,7 +3,7 @@ from ukbb_qc.resources.variant_qc import var_annotations_ht_path
 from ukbb_qc.resources.basics import release_ht_path
 from ukb_common.utils.annotations import annotation_case_builder
 from gnomad.utils.vep import process_consequences
-from ukb_exomes.resources import *
+from ..resources import *
 
 ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
 TESTS = ('skato', 'skat', 'burden')
@@ -25,7 +25,7 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
         if coverage_min is not None:
             coverage_ht = compute_mean_coverage_ht(tranche)
             mt = mt.annotate_rows(mean_coverage=coverage_ht[mt.row_key].mean_coverage)
-            mt = mt.filter_rows(mean_coverage > coverage_min)
+            mt = mt.filter_rows(mt.mean_coverage > coverage_min)
         if by_annotation:
             mt = mt.select_cols('n_cases', 
                                 lambda_gc_skato=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
@@ -79,19 +79,22 @@ def compute_lambdas_by_freq_interval_ht(result_type='gene', by_annotation: bool 
     ht = ht.union(compute_lambda_gc_ht(result_type=result_type, by_annotation=by_annotation, freq_lower=freq_breaks[-1], n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche))
     return ht
 
-def compute_lambdas_by_expected_ac_ht(ac_breaks: list=[1, 10, 100, 1000, 10000, 100000], random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+def compute_lambdas_by_expected_ac_ht(freq_lower: float=None, ac_breaks: list=[1, 10, 100, 1000, 10000, 100000], random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path('variant', random_phenos=random_phenos))
+    if freq_lower is not None:
+        mt = mt.filter_rows(mt.AF > freq_lower)
     if random_phenos:
         mt = mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0]).drop('AF').rename({'AF2': 'AF'})
     mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
     mt = mt.annotate_cols(lambda_gc0 = hl.agg.filter(mt.expected_AC <= ac_breaks[0], hl.methods.statgen._lambda_gc_agg(mt.Pvalue)))
     for i in list(range(0, len(ac_breaks)-1)):
         mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[i]}': hl.agg.filter((mt.expected_AC > ac_breaks[i]) & (mt.expected_AC <= ac_breaks[i+1]), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
-    mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter(mt.expected_AC > ac_breaks[-1], hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
+    mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter(mt.expected_AC > ac_breaks[-1], hl.methods.statgen._lambda_gc_agg(mt.Pvalue))},
+                          trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
     return mt.cols()
 
-def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: int = None, coverage_min: int = None, random_phenos: bool = False, 
-                                extension: str = 'ht', overwrite: bool = False, tranche: str = CURRENT_TRANCHE):
+def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: int = None, coverage_min: int = None,
+                     random_phenos: bool = False, extension: str = 'ht', overwrite: bool = False, tranche: str = CURRENT_TRANCHE):
     rp = 'rp_' if random_phenos else ''
     filter = '_filtered' if any(v is not None for v in [freq_lower, n_var_min, coverage_min]) else ''
     freq_breaks = [freq_lower, 0.001, 0.01, 0.1] if freq_lower is not None else [0.0001, 0.001, 0.01, 0.1]
@@ -109,7 +112,7 @@ def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: in
         compute_lambda_gc_ht(result_type=result_type, by_gene=True, freq_lower=freq_lower, n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos
                              ).write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'{rp}lambda_by_gene{filter}', result_type='', extension=extension), overwrite=overwrite)
     else:
-        compute_lambdas_by_expected_ac_ht(random_phenos=random_phenos).write(get_ukb_exomes_sumstat_path(subdir=random_pheno_folder, dataset=f'{rp}lambda_expectedAC{filter}', result_type='var', extension=extension), overwrite=overwrite)
+        compute_lambdas_by_expected_ac_ht(freq_lower=freq_lower, random_phenos=random_phenos).write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'{rp}lambda_expectedAC{filter}', result_type='var', extension=extension), overwrite=overwrite)
 
 def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
     pheno = get_ukb_pheno_mt()
@@ -139,7 +142,7 @@ def get_caf_info_ht(tranche: str = CURRENT_TRANCHE):
     return sum_af
 
 
-def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, var_min_freq: float=None, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))
     if phenos_to_keep is not None:
         mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
@@ -149,42 +152,44 @@ def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, g
         if genes_to_keep is not None:
             mt = mt.filter_rows(hl.is_defined(genes_to_keep.index(mt.row_key)))
         # Count Significant Hits per Gene for each Test
-        mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.sum(mt.Pvalue < level), 
-                              sig_pheno_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level), 
-                              sig_pheno_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
+        mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.sum(mt.Pvalue < 2.5e-8),
+                              sig_pheno_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < 1e-6),
+                              sig_pheno_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < 6.7e-7))
         # Count Significant Hits per Phenotype for each Test
-        mt = mt.annotate_cols(sig_gene_cnt_skato=hl.agg.sum(mt.Pvalue < level), 
-                              sig_gene_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < level), 
-                              sig_gene_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < level))
+        mt = mt.annotate_cols(sig_gene_cnt_skato=hl.agg.sum(mt.Pvalue < 2.5e-8),
+                              sig_gene_cnt_skat=hl.agg.sum(mt.Pvalue_SKAT < 1e-6),
+                              sig_gene_cnt_burden=hl.agg.sum(mt.Pvalue_Burden < 6.7e-7))
     else:
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation), sig_pheno_cnt=hl.agg.sum(mt.Pvalue < level))
+        if var_min_freq is not None:
+            mt = mt.filter_rows(mt.AF>var_min_freq)
+        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation), sig_pheno_cnt=hl.agg.sum(mt.Pvalue < 8e-9))
         # Count Significant Hits per Phenotype for each Test
-        mt = mt.annotate_cols(sig_var_cnt=hl.agg.sum(mt.Pvalue < level))
+        mt = mt.annotate_cols(sig_var_cnt=hl.agg.sum(mt.Pvalue < 8e-9))
     mt = mt.annotate_cols(trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
     return mt
 
-def get_sig_cnt_annt_ht(result_type: str = 'gene', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_annt_ht(result_type: str = 'gene', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche))
     if phenos_to_keep is not None:
         mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
     if result_type == 'gene':
         if genes_to_keep is not None:
             mt = mt.filter_rows(hl.is_defined(genes_to_keep.index(mt.row_key)))
-        mt = mt.annotate_cols(sig_cnt_skato=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)), 
-                              sig_cnt_skat=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_SKAT < level)), 
-                              sig_cnt_burden=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_Burden < level)), )
+        mt = mt.annotate_cols(sig_cnt_skato=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < 2.5e-8)),
+                              sig_cnt_skat=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_SKAT < 1e-6)),
+                              sig_cnt_burden=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_Burden < 6.7e-7)), )
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt_skato', 'sig_cnt_skat', 'sig_cnt_burden')
         ht = ht.annotate(**{f'{annotation}_sig_cnt_{test}': ht[f'sig_cnt_{test}'][annotation] for annotation in ANNOTATIONS for test in TESTS})
     else:
         mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
-        mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < level)), )
+        mt = mt.annotate_cols(sig_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < 8e-9)), )
         ht = mt.cols().select('n_cases', 'description', 'sig_cnt')
         ht = ht.annotate(**{f'{annotation}_sig_cnt': ht.sig_cnt[annotation] for annotation in ('pLoF', 'missense|LC', 'synonymous')}, )
     ht = ht.annotate(trait_type2=hl.if_else(ht.trait_type == 'icd_first_occurrence', 'icd10', ht.trait_type))
 
     return ht
 
-def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, level: float = 1e-6, tranche: str = CURRENT_TRANCHE):
+def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, level: float = 2.5e-8, tranche: str = CURRENT_TRANCHE):
     var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
     mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
     if phenos_to_keep is not None:
@@ -195,7 +200,7 @@ def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', phenos_to_keep: hl.Tab
     var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id)
     var = var.explode_rows(var.gene_id)
     var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
-    var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue < level))
+    var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue < 8e-9))
     pvalue = P_VALUE_FIELDS[test_type.lower()]
     mt = mt.annotate_entries(var_cnt=var[mt.row_key, mt.col_key]['var_cnt'])
     mt = mt.annotate_cols(pheno_gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
@@ -298,3 +303,21 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     related = corr.filter((corr.entry > hl.sqrt(r_2)) & (corr.i != corr.j))
     pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=tie_breaker)
     return pheno_to_remove
+
+def export_ht_to_txt(path_to_ht: str, output_filename: str):
+    ht = hl.read_table(path_to_ht)
+    ht.export(f'gs://ukbb-exome-public/summary_statistics_analysis/{output_filename}.txt.bgz')
+
+def get_related_pheno_cnt_list(pheno_ht: hl.Table):
+    l = []
+    pheno_mt = get_ukb_pheno_mt()
+    pheno_mt = pheno_mt.filter_cols(hl.is_defined(pheno_ht[pheno_mt.col_key]))
+    corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
+    import numpy as np
+    for k in np.arange(0.1, 1.0, 0.1):
+        print(k)
+        related = corr.filter((corr.entry > k) & (corr.i != corr.j))
+        pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False)
+        l.append(pheno_to_remove.count())
+    return l
+

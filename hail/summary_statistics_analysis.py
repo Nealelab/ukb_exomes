@@ -1,9 +1,11 @@
+import sys
+print(sys.path)
 import hail as hl
 from gnomad.resources.grch38.reference_data import clinvar
 from ukb_exomes import *
 
-bucket = 'gs://ukbb-exome-public'
-sumstats_folder = f'{bucket}/summary_statistics_analysis'
+sum_bucket = 'gs://ukbb-exome-public'
+sumstats_folder = f'{sum_bucket}/summary_statistics_analysis'
 lambda_folder = f'{sumstats_folder}/lambda_gc'
 pvalue_folder = f'{sumstats_folder}/pvalue'
 sig_folder = f'{sumstats_folder}/sig_cnt'
@@ -47,15 +49,16 @@ def main(args):
 
         else:
             lambda_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_full_filtered'))
-            lambda_var = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_full_filtered', result_type='var'))
-            lambda_by_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_by_gene_filtered'))
+            lambda_by_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_by_gene_filtered', result_type=''))
 
-            phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name='lambda_gc_skato', lower=args.lambda_lower, upper=args.lambda_upper)
-            genes_to_keep = get_lambda_filtered_ht(lambda_by_gene, lambda_name='lambda_gc_skato', lower=args.lambda_lower, upper=args.lambda_upper)
+            phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name=f'lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
+            genes_to_keep = get_lambda_filtered_ht(lambda_by_gene, lambda_name=f'all_lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
             phenos_to_remove = get_corr_phenos_ht(r_2=args.r2_cut, tie_breaker=more_cases_tie_breaker)
-            phenos_to_keep = phenos_to_keep.filter(hl.is_defined( phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode, 
-                                                                                          pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding, 
+            phenos_to_keep = phenos_to_keep.filter(hl.is_defined( phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
+                                                                                          pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
                                                                                           modifier=phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
+            genes_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='genes_to_keep', result_type=''), overwrite=args.overwrite)
+            phenos_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='phenos_to_keep', result_type=''), overwrite=args.overwrite)
 
         if args.compare_var_gene:
             var_gene = compare_gene_var_sig_cnt_mt(phenos_to_keep=phenos_to_keep, genes_to_keep=genes_to_keep)
@@ -73,7 +76,7 @@ def main(args):
         if args.gene_results:
             gene = get_sig_cnt_mt(phenos_to_keep=phenos_to_keep, genes_to_keep=genes_to_keep)
             gene_sig = gene.rows()
-            gene_sig = gene_sig.select('caf', data=[(gene_sig.sig_pheno_cnt_skato, 'skato'), 
+            gene_sig = gene_sig.select('CAF', data=[(gene_sig.sig_pheno_cnt_skato, 'skato'),
                                                     (gene_sig.sig_pheno_cnt_skat, 'skat'), 
                                                     (gene_sig.sig_pheno_cnt_burden, 'burden')]).explode('data')
             gene_sig = gene_sig.transmute(sig_cnt=gene_sig.data[0], result_type=gene_sig.data[1])
@@ -90,7 +93,7 @@ def main(args):
             pheno_annt.write(get_ukb_exomes_sumstat_path(subdir=sig_folder, dataset='pheno_sig_cnt_annt', result_type='gene', extension=args.extension), overwrite=args.overwrite)
 
         if args.variant_results:
-            var = get_sig_cnt_mt('variant', phenos_to_keep=phenos_to_keep)
+            var = get_sig_cnt_mt('variant', phenos_to_keep=phenos_to_keep, var_min_freq=args.af_lower)
             if args.add_variant_info:
                 clinvar_ht = clinvar.ht()
                 clinvar_ht = clinvar_ht.explode(clinvar_ht.info.CLNSIG)
@@ -112,15 +115,17 @@ def main(args):
                 vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA['300k']))
                 vep = process_consequences(vep)
                 vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
+                vep = vep.annotate(tx_annotation_csq=ht[vep.key].tx_annotation.csq,
+                                   mean_proportion=ht[vep.key].tx_annotation.mean_proportion)
 
                 var = var.annotate_rows(pathogenicity=clinvar_ht[var.locus, var.alleles]['pathogenicity'], 
                                         annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), 
-                                        polyphen2=vep[var.key].vep.worst_csq_by_gene_canonical.polyphen_prediction,
-                                        amino_acids=vep[var.key].vep.worst_csq_by_gene_canonical.amino_acids,
-                                        lof=vep[var.key].vep.worst_csq_by_gene_canonical.lof,
-                                        most_severe_consequence=vep[var.key].vep.worst_csq_by_gene_canonical.most_severe_consequence,
-                                        tx_annotation_csq=vep[var.key].tx_annotation_csq,
-                                        mean_proportion_expressed=vep[var.key].mean_proportion)
+                                        polyphen2=vep[var.row_key].vep.worst_csq_by_gene_canonical.polyphen_prediction,
+                                        amino_acids=vep[var.row_key].vep.worst_csq_by_gene_canonical.amino_acids,
+                                        lof=vep[var.row_key].vep.worst_csq_by_gene_canonical.lof,
+                                        most_severe_consequence=vep[var.row_key].vep.worst_csq_by_gene_canonical.most_severe_consequence,
+                                        tx_annotation_csq=vep[var.row_key].tx_annotation_csq,
+                                        mean_proportion_expressed=vep[var.row_key].mean_proportion)
 
             var.rows().write(get_ukb_exomes_sumstat_path(subdir=sig_folder, dataset='sig_cnt', result_type='var', extension=args.extension), overwrite=args.overwrite)
 
@@ -152,7 +157,8 @@ if __name__ == '__main__':
     parser.add_argument('--get_sig_betas', help='Add extra annotation information on variants', action='store_true')
     parser.add_argument('--gene_results', help='Use gene-level results', action='store_true')
     parser.add_argument('--variant_results', help='Use single-variant results', action='store_true')
-    parser.add_argument('--extension', help='Output file format', nargs='?', const='txt.bgz', type=str)
+    parser.add_argument('--result_type', help='Test results to apply lambda filters on: skato OR burden', nargs='?', const='skato', type=str)
+    parser.add_argument('--extension', help='Output file format', nargs='?', const='ht', type=str)
     parser.add_argument('--coverage_min', help='Keep genes with higher coverage', nargs='?', const=20, type=int)
     parser.add_argument('--n_var_min', help='Keep genes with larger number of variants', nargs='?', const=2, type=int)
     parser.add_argument('--caf_lower', help='Keep genes with higher cumulative allele frequency', nargs='?', const=1e-4, type=float)
