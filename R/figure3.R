@@ -23,3 +23,4 @@ figure3 = function(save_plot = F, output_path){
 }
 
 figure3(save_plot = T, paste0(output, 'figure3.png'))
+

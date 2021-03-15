@@ -135,6 +135,7 @@ def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: in
     else:
         compute_lambdas_by_expected_ac_ht(freq_lower=freq_lower, var_filter=var_filter, random_phenos=random_phenos).write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'{rp}lambda_expectedAC{filter}', result_type='var', extension=extension), overwrite=overwrite)
 
+
 def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
     pheno = get_ukb_pheno_mt()
     if phenocode is not None:
@@ -173,7 +174,6 @@ def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, g
         mt = mt.annotate_rows(CAF=af[mt.annotation, mt.gene_id]['CAF'])
         if genes_to_keep is not None:
             mt = mt.filter_rows(hl.is_defined(genes_to_keep.index(mt.row_key)))
-        # Count Significant Hits per Gene for each Test
         mt = mt.annotate_rows(sig_pheno_cnt_skato=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt.Pvalue < 2.5e-8)),
                               sig_pheno_cnt_skat=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt.Pvalue_SKAT < 1e-6)),
                               sig_pheno_cnt_burden=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt.Pvalue_Burden < 6.7e-7)),
@@ -182,7 +182,6 @@ def get_sig_cnt_mt(result_type: str = 'gene', phenos_to_keep: hl.Table = None, g
                               all_sig_pheno_cnt_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.agg.count_where(mt.Pvalue_Burden < 6.7e-7)),)
         mt = mt.annotate_rows(**{f'{trait_type}_sig_pheno_cnt_{test}': mt[f'sig_pheno_cnt_{test}'].get(trait_type) for trait_type in TRAIT_TYPES for test in TESTS},)
 
-        # Count Significant Hits per Phenotype for each Test
         mt = mt.annotate_cols(sig_gene_cnt_skato=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < 2.5e-8)),
                               sig_gene_cnt_skat=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_SKAT < 1e-6)),
                               sig_gene_cnt_burden=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue_Burden < 6.7e-7)),
@@ -346,7 +345,6 @@ def get_related_pheno_cnt_list(pheno_ht: hl.Table):
         pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False)
         l.append(pheno_to_remove.count())
     return l
-
 
 def get_icd_min_p_ht(result_type: str = 'gene', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, var_min_freq: float=None, tranche: str = CURRENT_TRANCHE):
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))

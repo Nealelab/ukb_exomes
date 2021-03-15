@@ -131,7 +131,6 @@ match_polyphen_variants = function(seed = 1024, ref_group, freq_col = 'AF', inte
                                labels = c('Probably Damaging', 'Possibly Damaging', 'Benign'), group_col = 'polyphen2', x_lab = 'PolyPhen2',
                                output_path = output_path)
     }
-
   }
   return(matched_sum)
 }
@@ -227,3 +226,4 @@ var_sig %>%
   filter(tx_annotation_csq == most_severe_consequence & most_severe_consequence %in% c('splice_acceptor_variant', 'splice_donor_variant') & lof == 'HC') %>%
   mutate(mean_prop_bin=factor(get_mean_prop_interval(mean_proportion_expressed), levels = c('[0, 0.2]','(0.2, 0.8]','(0.8, 1]'))) %>%
   group_by(most_severe_consequence, mean_prop_bin) %>% sig_cnt_summary()
+

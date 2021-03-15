@@ -133,8 +133,3 @@ figure2 = function(save_plot = F, output_path){
 }
 
 figure2(save_plot = T, output_path = output_path)
-
-
-
-
-

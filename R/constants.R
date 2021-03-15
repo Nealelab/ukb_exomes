@@ -56,6 +56,7 @@ themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10
 label_type = labeller(trait_type2 = trait_type_names, annotation = annotation_names, result_type = result_names, 
                       CAF_range = caf_names, AF_range = af_names, ac_type = ac_names, gene_set_name = gene_list_names)
 
+
 check_annotation = function(annotation){
   if(tolower(annotation) %in% c('plof', 'lof')){
     annotation = 'pLoF'
@@ -99,12 +100,26 @@ get_mean_prop_interval = function(mean_proportion){
   return(bin)
 }
 
+
 get_ukb_data_url = function() {
   return(paste0('https://storage.googleapis.com/ukbb-exome-public/summary_statistics_analysis/'))
 }
 
-set_freq_bins = function(data, freq_col, interval){
-  br = seq(min(data[, freq_col]), max(data[, freq_col], na.rm = T), by = interval)
+
+get_coverage_interval = function(coverage){
+  interval = case_when(
+    coverage <= 10  ~ '[0, 10]',
+    coverage <= 20  ~ '(10, 20]',
+    coverage <= 30  ~ '(20, 30]',
+    coverage <= 40  ~ '(30, 40]',
+    coverage <= 50  ~ '(40, 50]',
+    coverage > 50  ~ '(50, )',
+  )
+  return(interval)
+}
+
+set_freq_bins = function(data, freq_col='AF', interval=0.001){
+  br = seq(0, max(data[, freq_col], na.rm = T), by=interval)
   data = data %>%
     mutate(bins = cut(unlist(get(freq_col)), breaks=br, labels = paste(head(br, -1), br[-1], sep=' - ')), 
            bin_labels = cut(unlist(get(freq_col)), breaks = br, labels = 1:(length(br)-1)))
@@ -255,10 +270,10 @@ save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_pa
 
 sig_cnt_summary = function(data, sig_col = 'sig_cnt'){
     summary = data %>%
-      summarise(mean = mean(get(sig_col), na.rm = TRUE), 
-                prop = sum(get(sig_col) > 0, na.rm = T) / n(), 
-                sem = sd(get(sig_col), na.rm = T)/sqrt(n()), 
-                sig_cnt = sum(get(sig_col) > 0, na.rm = T), 
+      summarise(mean = mean(get(sig_col), na.rm = TRUE),
+                prop = sum(get(sig_col) > 0, na.rm = T) / n(),
+                sem = sd(get(sig_col), na.rm = T)/sqrt(n()),
+                sig_cnt = sum(get(sig_col) > 0, na.rm = T),
                 cnt = n()) %>%
       mutate(sd = 1.96* sqrt(prop* (1-prop)/cnt))
   return(summary)
@@ -310,8 +325,6 @@ match_subset_by_freq_1set = function(remain_data, bin_sum, modifier = modifier){
       pend = 0
     }
   }
-  # sims = remain_data %>%
-  #   filter(row.names(.) %in% ids)
   sims = remain_data[ids, ]
  return(sims)
 }
@@ -564,3 +577,4 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
   }
   return(plt)
 }
+
