@@ -1,17 +1,18 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 output_path = '~/Desktop/'
+# Burden Count: c(1919, 1506, 1269, 1095, 931, 762, 602, 415, 201)
 
 figureS16 = function(save_plot = F, filter = T, output_path){
   if(filter){
     corr = load_ukb_file('pheno_corr_after300k.txt.bgz')
     count = data.frame(
-      Count = c(2146, 1605, 1317, 1124, 941, 759, 590, 399, 189),
+      Count = c(1113, 954, 831, 705, 607, 480, 337, 210, 82),
       Corr = seq(0.1, 0.9, 0.1))
   }else{
     corr = load_ukb_file('pheno_corr_before300k.txt.bgz')
     count = data.frame(
-      Count = c(2172, 1629, 1343, 1146, 961, 781, 610, 415, 202),
+      Count = c(1343, 1084, 925, 774, 656, 515, 367, 232, 98),
       Corr = seq(0.1, 0.9, 0.1))
   }
   corr = corr %>% filter(i != j)

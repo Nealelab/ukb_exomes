@@ -4,6 +4,8 @@ detach(package:plyr)
 rp_gene_p_value_skato  = load_ukb_file('rp_gene_p_value300k_skato.txt.bgz')
 rp_gene_p_value_burden = load_ukb_file('rp_gene_p_value300k_burden.txt.bgz')
 rp_var_p_value  = load_ukb_file('rp_var_p_value300k.txt.bgz')
+gene_p_value_skato = load_ukb_file('gene_pvalue_filtered_300k.txt.bgz')
+gene_p_value_burden = load_ukb_file('gene_pvalue_filtered_300k_burden.txt.bgz')
 output_path = '~/Desktop/'
 
 figureS8 = function(save_plot = F, direction = 'long', output_path){
