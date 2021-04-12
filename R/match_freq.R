@@ -4,9 +4,7 @@ test = 'skato'
 output = '~/'
 
 gene_skato = load_ukb_file(paste0('sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-var_sig = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'),
-                        force_cols = cols(pathogenicity = col_character(), polyphen2 = col_character(),
-                                          most_severe_consequence = col_character(), mean_proportion = col_double()))
+var_sig = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), force_cols = var_cols)
 
 # 37 Gene Lists
 ## https://github.com/macarthur-lab/gene_lists.git
