@@ -469,16 +469,12 @@ dev.off()
 # --------Preliminary Significant Hits----------
 test = 'skato'
 gene_sig_before = load_ukb_file('sig_cnt_before_gene_300k.txt.bgz')
-var_sig_before = load_ukb_file('sig_cnt_before_var_300k.txt.bgz', 
-                        force_cols = cols(pathogenicity = col_character(), polyphen2 = col_character(), 
-                                          most_severe_consequence = col_character(), mean_proportion = col_double()))
+var_sig_before = load_ukb_file('sig_cnt_before_var_300k.txt.bgz', force_cols = var_cols)
 pheno_sig_before = load_ukb_file('pheno_sig_cnt_before_gene_300k.txt.bgz')
 pheno_var_sig_before = load_ukb_file('pheno_sig_cnt_before_var_300k.txt.bgz')
 
 gene_sig_after = load_ukb_file(paste0('sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-var_sig_after = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), 
-                        force_cols = cols(pathogenicity = col_character(), polyphen2 = col_character(), 
-                                          most_severe_consequence = col_character(), mean_proportion = col_double()))
+var_sig_after = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), force_cols = var_cols)
 pheno_sig_after = load_ukb_file(paste0('pheno_sig_cnt_after_gene_300k_', test, '.txt.bgz'))
 pheno_var_sig_after = load_ukb_file(paste0('pheno_sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'))
 var_gene_by_pheno = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '.txt.bgz'))
