@@ -1,16 +1,7 @@
 import hail as hl
-from gnomad.resources.grch38.reference_data import clinvar
+import argparse
 from ukb_exomes import *
 
-sum_bucket = 'gs://ukbb-exome-public'
-sumstats_folder = f'{sum_bucket}/summary_statistics_analysis'
-lambda_folder = f'{sumstats_folder}/lambda_gc'
-pvalue_folder = f'{sumstats_folder}/pvalue'
-sig_folder = f'{sumstats_folder}/sig_cnt'
-beta_folder = f'{sumstats_folder}/beta'
-
-def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gene', extension: str = 'ht', tranche: str = CURRENT_TRANCHE):
-    return f'{subdir}/{dataset}_{result_type}_{tranche}.{extension}'
 
 def main(args):
     if args.compute_lambdas:
@@ -47,9 +38,9 @@ def main(args):
 
             phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name=f'lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
             phenos_to_remove = get_corr_phenos_ht(r_2=args.r2_cut, tie_breaker=more_cases_tie_breaker)
-            phenos_to_keep = phenos_to_keep.filter(hl.is_defined( phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
-                                                                                          pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
-                                                                                          modifier=phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
+            phenos_to_keep = phenos_to_keep.filter(hl.is_defined(phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
+                                                                                         pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
+                                                                                         modifier=phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
             genes_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='genes_to_keep', result_type=''), overwrite=args.overwrite)
             phenos_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='phenos_to_keep', result_type=''), overwrite=args.overwrite)
 
@@ -100,38 +91,7 @@ def main(args):
         if args.variant_results:
             var = get_sig_cnt_mt('variant', phenos_to_keep=phenos_to_keep, var_min_freq=args.af_lower)
             if args.add_variant_info:
-                clinvar_ht = clinvar.ht()
-                clinvar_ht = clinvar_ht.filter(~clinvar_ht.info.CLNREVSTAT[0].contains('no_assertion'))  # remove clinvar zero star variants
-                clinvar_ht = clinvar_ht.explode(clinvar_ht.info.CLNSIG)
-                clinvar_ht = clinvar_ht.annotate(pathogenicity=hl.case() \
-                                                 .when(hl.literal({'Pathogenic', 'Likely_pathogenic', 'Pathogenic/Likely_pathogenic'}).contains(clinvar_ht.info.CLNSIG), 'P/LP') \
-                                                 .when(hl.literal({'Uncertain_significance'}).contains(clinvar_ht.info.CLNSIG), 'VUS') \
-                                                 .when(hl.literal({'Benign', 'Likely_benign', 'Benign/Likely_benign'}).contains(clinvar_ht.info.CLNSIG), 'B/LB') \
-                                                 .or_missing())
-
-                rg37 = hl.get_reference('GRCh37')
-                rg38 = hl.get_reference('GRCh38')
-                rg37.add_liftover('gs://hail-common/references/grch37_to_grch38.over.chain.gz', rg38)
-                ht = hl.read_matrix_table('gs://gcp-public-data--gnomad/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021520.ht').rows()
-                ht = ht.explode(ht.tx_annotation)
-                ht = ht.annotate(new_locus=hl.liftover(ht.locus, 'GRCh38'))
-                ht = ht.filter(hl.is_defined(ht.new_locus))
-                ht = ht.key_by(locus=ht.new_locus, alleles=ht.alleles)
-
-                vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA['300k']))
-                vep = process_consequences(vep)
-                vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-                vep = vep.annotate(tx_annotation_csq=ht[vep.key].tx_annotation.csq,
-                                   mean_proportion=ht[vep.key].tx_annotation.mean_proportion)
-
-                var = var.annotate_rows(pathogenicity=clinvar_ht[var.locus, var.alleles]['pathogenicity'], 
-                                        annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), 
-                                        polyphen2=vep[var.row_key].vep.worst_csq_by_gene_canonical.polyphen_prediction,
-                                        amino_acids=vep[var.row_key].vep.worst_csq_by_gene_canonical.amino_acids,
-                                        lof=vep[var.row_key].vep.worst_csq_by_gene_canonical.lof,
-                                        most_severe_consequence=vep[var.row_key].vep.worst_csq_by_gene_canonical.most_severe_consequence,
-                                        tx_annotation_csq=vep[var.row_key].tx_annotation_csq,
-                                        mean_proportion_expressed=vep[var.row_key].mean_proportion)
+                var = annotate_additional_info_ht(result_mt=var, result_type='variant')
             var_sig = var.rows()
             var_sig.write(get_ukb_exomes_sumstat_path(subdir=sig_folder, dataset=f'sig_cnt{filter_flag}', result_type='var', extension=args.extension), overwrite=args.overwrite)
 
@@ -147,12 +107,9 @@ def main(args):
                                     common_beta=hl.agg.filter(var.AF >= 0.001, hl.agg.mean(var.BETA_sig)), )
             var.cols().write(get_ukb_exomes_sumstat_path(subdir=beta_folder, dataset='var_beta', result_type='var', extension=args.extension), overwrite=args.overwrite)
         if args.gene_results:
-            gene = compare_gene_var_sig_cnt_mt(test_type='burden')
-            caf = get_caf_info_ht()
-            coverage_ht = compute_mean_coverage_ht()
-            gene = gene.annotate_rows(mean_coverage=coverage_ht[gene.row_key].mean_coverage,
-                                      lambda_gc_gene=hl.agg.filter(hl.is_defined(gene.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(gene.Pvalue_Burden)),
-                                      CAF=caf[gene.annotation, gene.gene_id]['CAF'])
+            gene = compare_gene_var_sig_cnt_mt(test_type='burden', tranche=CURRENT_TRANCHE)
+            gene = annotate_additional_info_ht(result_mt=gene, result_type='gene')
+            gene = gene.annotate_rows(lambda_gc_gene=hl.agg.filter(hl.is_defined(gene.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(gene.Pvalue_Burden)))
             gene = gene.annotate_cols(lambda_gc_pheno=hl.agg.filter(hl.is_defined(gene.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(gene.Pvalue_Burden)))
             gene = gene.annotate_entries(BETA_sig=hl.or_missing(gene.Pvalue_Burden < LEVELS['burden'], gene.BETA_Burden))
             gene = gene.entries()
@@ -170,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--get_sig_cnts', help='Count the number of significant associations', action='store_true')
     parser.add_argument('--sig_without_filters', help='Get significant associations without any filters', action='store_true')
     parser.add_argument('--add_variant_info', help='Add extra annotation information on variants', action='store_true')
-    parser.add_argument('--get_sig_betas', help='Add extra annotation information on variants', action='store_true')
+    parser.add_argument('--get_sig_betas', help='Get effect sizes for significant associations', action='store_true')
     parser.add_argument('--gene_results', help='Use gene-level results', action='store_true')
     parser.add_argument('--variant_results', help='Use single-variant results', action='store_true')
     parser.add_argument('--get_icd_pvalue', help='Get the minimum p-value for each ICD group', action='store_true')
@@ -187,9 +144,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-
-
-
-
-
