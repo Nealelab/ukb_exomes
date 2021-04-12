@@ -1,7 +1,7 @@
-packages = c('dplyr', 'GGally', 'reshape2',  'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 
+packages = c('dplyr', 'GGally', 'reshape2', 'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 'grid', 
               'RCurl', 'trelliscopejs', 'tidyverse', 'Hmisc', 'devtools', 'broom', 'plotly', 'slackr', 'magrittr', 'gapminder', 'readr', 
-              'purrr', 'skimr', 'gganimate', 'gghighlight', 'plotROC', 'naniar', 'BiocManager', 'cowplot', 'corrplot', 'corrr', 'ggridges', 
-              'ggpubr', 'meta', 'tidygraph', 'pbapply', 'RMySQL', 'egg', 'ggwordcloud', 'patchwork', 'ggrastr', 'ggthemes', 'STRINGdb', 'ggrepel')
+              'purrr', 'skimr', 'gganimate', 'gghighlight', 'plotROC', 'naniar', 'BiocManager', 'cowplot', 'corrplot', 'corrr', 'ggridges', 'RColorBrewer', 
+              'ggpubr', 'meta', 'tidygraph', 'pbapply', 'RMySQL', 'egg', 'ggwordcloud', 'patchwork', 'ggrastr', 'ggthemes', 'STRINGdb', 'ggrepel', 'LowMACA')
 
 for(p in packages){
   if(!require(p, character.only = T)){
@@ -10,6 +10,7 @@ for(p in packages){
 }
 
 # BiocManager::install('STRINGdb')
+# BiocManager::install("LowMACA")
 # devtools::install_github('VPetukhov/ggrastr')
 # devtools::install_github('hafen/trelliscopejs')
 # devtools::install_github('thomasp85/patchwork')
@@ -19,33 +20,70 @@ annotation_types = c('pLoF', 'missense|LC', 'synonymous')
 annotation_names = c('pLoF', 'Missense', 'Synonymous')
 result_types = c('skato', 'skat', 'burden')
 result_names = c('SKAT-O', 'SKAT', 'Burden Test')
-af_types = c('AF:(None, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
-af_names = c('AF:( , 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
+af_types = c('AF:(None, 0.0001]', 'AF:(None, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-05, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
+af_names = c('AF:( , 0.0001]', 'AF:(, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-5, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
 caf_types = c('CAF:(None, 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, None]')
 caf_names = c('CAF:( , 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, )')
+ac_types = c('0', '1', '10', '100', '1000', '10000', '100000')
+ac_names = c('Expected AC:( , 1]', 'Expected AC:(1, 10]', 'Expected AC:(10, 100]', 
+             'Expected AC:(100 , 1000]', 'Expected AC:(1000, 10000]', 'Expected AC:(10000, 100000]', 'Expected AC:(100000, )')
+gene_list_names = c('Constrained' = 'Constrained', 'Developmental Delay' = 'Developmental\nDelay', 'all_ad' = 'Autosomal dominant', 'all_ar' = 'Autosomal recessive', 
+                    'fda_approved_drug_targets' = 'FDA approved\ndrug targets', 'gwascatalog' = 'GWAS catalog', 'CEGv2_subset_universe' = 'Cell essential', 'NEGv1_subset_universe' = 'Cell non-essential')
+icd_names = c('A' = 'Infectious', 'C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H' = 'Eye', 'I' = 'Circulatory', 
+              'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy', 'P' = 'Perinatal', 'Q' = 'Congenital')
+random_pheno_subset = c('random_1e-04', 'random_0.001', 'random_0.01', 'random_0.05', 'random_0.1', 'random_0.2', 'random_0.5', 'random_continuous')
 
+names(ac_names) = ac_types
 names(af_names) = af_types
 names(caf_names) = caf_types
 names(result_names) = result_types
+names(trait_type_names) = trait_types
 names(annotation_names) = annotation_types
 
+qual_col_pals = brewer.pal.info %>% filter(category == 'qual')
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+set.seed(2)
+manhattan_color = sample(col_vector[14:29], 16, replace = F)
 annotation_color_scale = scale_colour_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 annotation_fill_scale = scale_fill_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
-themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 20, face = 'bold'),
-                  axis.title = element_text(color = 'Black', size = 18, face = 'bold'), 
-                  legend.title = element_text(color = 'Black', size = 17, face = 'bold'), 
-                  legend.text = element_text(color = 'Black', size = 17), 
-                  legend.position = 'top', legend.box = 'vertical', 
-                  strip.text = element_text(color = 'Black', size = 17))
-label_type = labeller(trait_type2=trait_type_names, annotation=annotation_names, result_type=result_names, CAF_range=caf_names, AF_range=af_names)
+themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'), 
+               axis.text = element_text(color = 'Black', size = 8), 
+               axis.title = element_text(color = 'Black', size = 10, face = 'bold'), 
+               legend.title = element_text(color = 'Black', size = 10, face = 'bold'), 
+               legend.text = element_text(color = 'Black', size = 10), 
+               legend.position = 'top', legend.box = 'vertical', 
+               strip.text = element_text(color = 'Black', size = 10), 
+               strip.background = element_rect( color = "black", size=0.5, linetype="solid") )
+label_type = labeller(trait_type2 = trait_type_names, annotation = annotation_names, result_type = result_names, 
+                      CAF_range = caf_names, AF_range = af_names, ac_type = ac_names, gene_set_name = gene_list_names)
 
-get_ukb_data_url = function() {
-  return(paste0('https://storage.googleapis.com/ukbb-exome-public/summary_statistics_analysis/'))
+
+check_annotation = function(annotation){
+  if(tolower(annotation) %in% c('plof', 'lof')){
+    annotation = 'pLoF'
+  }else if(tolower(annotation) %in% c('synonymous', 'syn')){
+    annotation = 'synonymous'
+  }else if(tolower(annotation) %in% c('missense', 'mis', 'missense|lc')){
+    annotation = 'missense|LC'
+  }
+  return(annotation)
+}
+
+get_coverage_interval = function(coverage){
+  interval = case_when(
+    coverage <= 10  ~ '[0, 10]', 
+    coverage <= 20  ~ '(10, 20]', 
+    coverage <= 30  ~ '(20, 30]', 
+    coverage <= 40  ~ '(30, 40]', 
+    coverage <= 50  ~ '(40, 50]', 
+    coverage > 50  ~ '(50, )', 
+  )
+  return(interval)
 }
 
 get_freq_interval = function(freq){
   interval = case_when(
-    freq <= 1e-4  ~ '[0, 0.0001]', 
+    freq <= 1e-4  ~ paste0('[', scientific(min(freq), digits = 0), ', 0.0001]'), 
     freq <= 1e-3  ~ '(0.0001, 0.001]', 
     freq <= 1e-2  ~ '(0.001, 0.01]', 
     freq <= 1e-1  ~ '(0.01, 0.1]', 
@@ -54,98 +92,236 @@ get_freq_interval = function(freq){
   return(interval)
 }
 
+get_mean_prop_interval = function(mean_proportion){
+  bin = case_when(
+    mean_proportion <= 0.2  ~ '[0, 0.2]', 
+    mean_proportion <= 0.8  ~ '(0.2, 0.8]', 
+    mean_proportion <= 1  ~ '(0.8, 1]', 
+  )
+  return(bin)
+}
+
+
+get_ukb_data_url = function() {
+  return(paste0('https://storage.googleapis.com/ukbb-exome-public/summary_statistics_analysis/'))
+}
+
+
+get_coverage_interval = function(coverage){
+  interval = case_when(
+    coverage <= 10  ~ '[0, 10]', 
+    coverage <= 20  ~ '(10, 20]', 
+    coverage <= 30  ~ '(20, 30]', 
+    coverage <= 40  ~ '(30, 40]', 
+    coverage <= 50  ~ '(40, 50]', 
+    coverage > 50  ~ '(50, )', 
+  )
+  return(interval)
+}
+
 set_freq_bins = function(data, freq_col='AF', interval=0.001){
   br = seq(0, max(data[, freq_col], na.rm = T), by=interval)
   data = data %>%
-    mutate(bins = cut(unlist(get(freq_col)), breaks=br, labels=paste(head(br, -1), br[-1], sep=' - ')), 
-           bin_labels = cut(unlist(get(freq_col)), breaks = br, labels=1:(length(br)-1)))
+    mutate(bins = cut(unlist(get(freq_col)), breaks=br, labels = paste(head(br, -1), br[-1], sep=' - ')), 
+           bin_labels = cut(unlist(get(freq_col)), breaks = br, labels = 1:(length(br)-1)))
   return(data)
 }
 
-check_annotation = function(annotation){
-  if(tolower(annotation) %in% c('plof', 'lof')){
-    annotation='pLoF'
-  }else if(tolower(annotation) %in% c('synonymous', 'syn')){
-    annotation='synonymous'
-  }else if(tolower(annotation) %in% c('missense', 'mis', 'missense|lc')){
-    annotation='missense|LC'
-  }
-  return(annotation)
+get_group_matched_data = function(data, ref_group, group1, group2, group_col, freq_col, interval = 0.01, seed = 1024){
+  set.seed(seed)
+  match1 = match_group_by_freq_1set(data, group1 = ref_group, group2 = group1, group_col = group_col, freq_col = freq_col, interval = interval)
+  match2 = match_group_by_freq_1set(data, group1 = ref_group, group2 = group2, group_col = group_col, freq_col = freq_col, interval = interval)
+  matched_data = rbind( data %>% filter(get(group_col) == ref_group), 
+                        match1 %>% select(1:ncol(data)), 
+                        match2 %>% select(1:ncol(data)))
+  return(matched_data)
 }
 
-get_matched_data = function(data, annt1='lof', freq_col, interval=0.01){
-  data = as.data.frame(data)
-  match1 = match_annotation_by_freq_1set(data, annt1 = annt1, annt2 = 'mis', freq_col = freq_col, interval=interval)
-  match2 = match_annotation_by_freq_1set(data, annt1 = annt1, annt2 = 'syn', freq_col = freq_col, interval=interval)
-  ref_data = data %>% filter(annotation == check_annotation(annt1)) %>% set_freq_bins(freq_col = freq_col, interval = interval)
-  matched = rbind(ref_data, match1, match2)
-  return(matched)
-}
+get_group_matched_data_summary = function(data, ref_group, group1, group2, group_col, freq_col, sig_col, interval = 0.01, by_freq_interval = FALSE, seed = 1024){
+  matched_data = get_group_matched_data(data, ref_group, group1, group2, group_col, freq_col, interval = interval, seed = seed)
+  matched_data = matched_data %>% mutate(interval = get_freq_interval(get(freq_col)))
+  matched_data$sig_cnt = matched_data[, sig_col]
 
-sig_cnt_summary = function(data, annt_col='annotation', sig_col='sig_cnt'){
-  if(is.null(annt_col)){
-    sums = data %>%
-      na.omit() %>%
-      summarise(means=mean(get(sig_col), na.rm=TRUE),
-                medians=median(get(sig_col), na.rm=TRUE),
-                props=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T))
+  if(by_freq_interval){
+    matched_sum = matched_data %>%
+      group_by(get(group_col), interval) %>%
+      sig_cnt_summary(sig_col)
   }else{
-    sums = data %>%
-      na.omit() %>%
-      group_by(get(annt_col)) %>%
-      summarise(means=mean(get(sig_col), na.rm=TRUE),
-                medians=median(get(sig_col), na.rm=TRUE),
-                props=sum(get(sig_col)>0, na.rm = T)/sum(get(sig_col)>=0, na.rm=T))}
-  return(sums)
+    print(colnames(matched_data))
+    print(group_col)
+    matched_sum = matched_data %>%
+      group_by(get(group_col)) %>%
+      sig_cnt_summary(sig_col)
+  }
+  colnames(matched_sum)[1] = group_col
+  return(matched_sum)
+}
+
+get_subset_matched_data_summary = function(ref_data, subset, freq_col = 'CAF', id_col, sig_col, oversample, ref_label, sub_label, interval = 0.01, seed = 1024){
+  ref_data = as.data.frame(ref_data)
+  subset = as.data.frame(subset)
+  ref_data = set_freq_bins(ref_data, freq_col, interval)
+  ref_data$sig_cnt = ref_data[ , sig_col]
+  sub_data = ref_data %>% filter(get(id_col) %in% subset[, id_col])
+  bin_sum = ref_data %>% filter(get(id_col) %in% subset[, id_col]) %>% count(bin_labels)
+  remain_data = ref_data %>% filter(!(get(id_col) %in% subset[, id_col]))
+  modifier = 1
+  if(oversample){modifier = if_else(oversample>nrow(sub_data), oversample/nrow(sub_data), 1)}
+  set.seed(seed)
+  match_lof = remain_data %>% filter(annotation == 'pLoF') %>% match_subset_by_freq_1set(. , bin_sum, modifier = modifier)
+  match_mis = remain_data %>% filter(annotation == 'missense|LC') %>% match_subset_by_freq_1set(., bin_sum, modifier = modifier)
+  match_syn = remain_data %>% filter(annotation == 'synonymous') %>% match_subset_by_freq_1set(., bin_sum, modifier = modifier)
+  ref_matched_data = rbind(match_lof, match_mis, match_syn) %>% mutate(group=ref_label) %>% select(group, annotation, sig_cnt)
+  sub_data = ref_data %>% filter(get(id_col) %in% subset[, id_col]) %>% mutate(group=sub_label) %>% select(group, annotation, sig_cnt)
+  matched_data = rbind(ref_matched_data, sub_data)
+  matched_sum = matched_data %>% group_by(annotation, group) %>% sig_cnt_summary()
+  return(matched_sum)
+}
+
+get_two_col_correlation_table = function(data, group_col, col1, col2){
+  cat('*** Correlation between', col1, ' and', col2, '*** \n')
+  cor_table = data %>% group_by(get(group_col)) %>%
+          summarise(tidy(cor.test(get(col1), get(col2))))
+  colnames(cor_table)[1] = group_col
+  return(cor_table)
+}
+
+save_group_matched_figure = function(matched_summary, save_plot = F, output_path){
+  plt = matched_summary %>%
+    mutate(annotation = factor(annotation, levels = annotation_types)) %>%
+    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation) +
+    geom_pointrange(stat = "identity", position = position_dodge(width = 0.4)) +
+    labs(y = 'Proportion', x = 'Annotation')  +
+    scale_y_continuous(label = label_percent(accuracy = 0.1)) +
+    scale_x_discrete(labels = annotation_names) +
+    annotation_color_scale + annotation_fill_scale +
+    theme_classic() + themes
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_group_matched_figure2 = function(matched_summary, levels, labels, group_col, x_lab, save_plot = F, output_path){
+  plt = matched_summary %>%
+    mutate(group = factor(get(group_col), levels = levels, labels = labels)) %>%
+    ggplot + aes(x = group, y = prop, ymin = prop-sd, ymax = prop+sd, color = group) +
+    geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
+    labs(y = 'Proportion', x = x_lab)  +
+    scale_color_manual(name = x_lab, values = c("#D95F02", "#7570B3", "#1B9E77")) +
+    scale_y_continuous(label = label_percent(accuracy = 1)) +
+    scale_x_discrete(labels = levels) +
+    theme_classic() + themes +
+    guides(color = guide_legend(nrow = 3) )
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_subset_matched_figure = function(matched_summary, save_plot = F, output_path){
+  plt = matched_summary %>%
+    mutate(annotation = factor(annotation, levels = annotation_types)) %>%
+    ggplot + aes(x = group, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation) +
+    geom_pointrange(stat = "identity", position = position_dodge(width = 0.4)) +
+    labs(y = 'Proportion', x = ' ')  +
+    scale_y_continuous(label = label_percent(accuracy = 0.1)) +
+    annotation_color_scale + annotation_fill_scale  +
+    facet_grid(~annotation, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
+    theme(panel.spacing = unit(0, "lines"), 
+          strip.background = element_blank(), 
+          strip.placement = "outside", 
+          strip.text = element_text(face='bold'))
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_path){
+  plt = matched_summary %>%
+    mutate(annotation = factor(annotation, levels = annotation_types)) %>%
+    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, alpha = group) +
+    geom_pointrange(stat = "identity", position = position_dodge(width = 1)) +
+    labs(y = 'Proportion', x = '', alpha = '')  +
+    scale_y_continuous(label = label_percent(accuracy = 1)) +
+    scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_summary$annotation))) +
+    annotation_color_scale + annotation_fill_scale  +
+    scale_alpha_discrete(range = c(0.5, 1)) +
+    facet_grid(gene_set_name~., labeller = label_type) + theme_classic() + themes+
+    coord_flip() +
+    theme(panel.spacing = unit(1, "lines"), 
+        axis.text= element_text(size = 14), 
+        strip.background = element_blank(), 
+        strip.placement = "outside", 
+        strip.text = element_text(face='bold', size=14), 
+        strip.text.x = element_blank(), 
+        legend.text = element_text(size = 13), 
+        legend.title = element_text(size = 13), 
+        axis.title = element_text(size = 13))
+  if(save_plot){
+    png(output_path, height = 10, width = 5, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+sig_cnt_summary = function(data, sig_col = 'sig_cnt'){
+    summary = data %>%
+      summarise(mean = mean(get(sig_col), na.rm = TRUE), 
+                prop = sum(get(sig_col) > 0, na.rm = T) / n(), 
+                sem = sd(get(sig_col), na.rm = T)/sqrt(n()), 
+                sig_cnt = sum(get(sig_col) > 0, na.rm = T), 
+                cnt = n()) %>%
+      mutate(sd = 1.96* sqrt(prop* (1-prop)/cnt))
+  return(summary)
 }
 
 print_annotation_wilcoxon_test = function(data, test_col, annt_col){
   lof = data[data[[annt_col]]=='pLoF', ]
   mis = data[data[[annt_col]]=='missense|LC', ]
   syn = data[data[[annt_col]]=='synonymous', ]
-  test = wilcox.test(lof[[test_col]], mis[[test_col]], alternative='two.sided')
+  test = wilcox.test(lof[[test_col]], mis[[test_col]], alternative = 'two.sided')
   print(paste0('pLoF vs. Missense: p-value = ', test$p.value, '; test-statistic = ', test$statistic ))
-  test = wilcox.test(lof[[test_col]], syn[[test_col]], alternative='two.sided')
+  test = wilcox.test(lof[[test_col]], syn[[test_col]], alternative = 'two.sided')
   print(paste0('pLoF vs. Synonymous: p-value = ', test$p.value, '; test-statistic = ', test$statistic))
-  test = wilcox.test(mis[[test_col]], syn[[test_col]], alternative='two.sided')
+  test = wilcox.test(mis[[test_col]], syn[[test_col]], alternative = 'two.sided')
   print(paste0('Missense vs. Synonymous: p-value = ', test$p.value, '; test-statistic = ', test$statistic))
 }
 
-print_freq_sig_cor = function(data=gene_sig, test='skato', freq_col='caf', sig_col='sig_cnt'){
-  if( freq_col=='caf'){data = data[data$result_type == test, ]}
-  cat('*** Correlation - CAF vs. Association Count (', test, ') *** \n')
-  data %>%
-    na.omit() %>%
-    group_by(annotation) %>%
-    summarise(tidy(cor.test(get(freq_col), get(sig_col))))
-}
-
-match_subset_by_freq = function(ref_data, subset, freq_col='caf', id_col='gene_id', sig_col='sig_cnt',
-                                    interval=0.01, sim_times=5, seed=12345){
-  ref_data = as.data.frame(ref_data)
-  gene_subset = as.data.frame(gene_subset)
-
-  ref_data = set_freq_bins(ref_data, freq_col, interval)
-  sub_data = ref_data %>% filter(get(id_col) %in% gene_subset[, id_col])
-  remain_data = ref_data %>% filter(!(get(id_col) %in% gene_subset[, id_col]))
-  bin_sum = sub_data %>% count(bin_labels)
-
+match_subset_by_freq = function(ref_data, subset, freq_col = 'CAF', id_col = 'gene_id', sig_col, oversample=1000, interval = 0.01, sim_times = 5, seed = 12345){
   set.seed(seed)
-  sim_data = replicate(sim_times, match_subset_by_freq_1set(remain_data, bin_sum, sig_col = sig_col), simplify=FALSE)
+  ref_data = as.data.frame(ref_data)
+  ref_data$sig_cnt = ref_data[, sig_col]
+  subset = as.data.frame(subset)
+  ref_data = set_freq_bins(ref_data, freq_col, interval)
+  sub_data = ref_data %>% filter(get(id_col) %in% subset[, id_col])
+  bin_sum = ref_data %>% filter(get(id_col) %in% subset[, id_col]) %>% count(bin_labels)
+  remain_data = ref_data %>% filter(!(get(id_col) %in% subset[, id_col]))
+  modifier = 1
+  if(oversample){modifier = if_else(oversample > nrow(sub_data), oversample/nrow(sub_data), 1)}
+
+  sim_data = replicate(sim_times, match_subset_by_freq_1set(remain_data = remain_data, bin_sum = bin_sum, modifier = modifier), simplify = FALSE)
   sim_sum = map_dfr(sim_data, sig_cnt_summary, .id = 'simulation')
 
   return(list(sim_data, sim_sum))
 }
 
-
-match_subset_by_freq_1set = function(remain_data, bin_sum, sig_col='sig_cnt'){
+match_subset_by_freq_1set = function(remain_data, bin_sum, modifier = modifier){
   n = nrow(bin_sum)
   ids = vector()
   pend = 0
   for(i in n:1){
     temp = remain_data %>% filter(bin_labels == bin_sum[i, 1])
-    size = bin_sum[i, 2]
-    if(nrow(temp)==0){
+    size = bin_sum[i, 2] * modifier
+    if(nrow(temp) == 0){
       pend = pend + size
       next
     }else{
@@ -154,23 +330,23 @@ match_subset_by_freq_1set = function(remain_data, bin_sum, sig_col='sig_cnt'){
       pend = 0
     }
   }
-  sims = remain_data %>%
-    filter(row.names(.) %in% ids)
+  sims = remain_data[ids, ]
  return(sims)
 }
 
-match_annotation_by_freq = function(data, annt1, annt2, annt_col = 'annotation', freq_col='AF', interval=0.0001, sim_times=5, seed=12345){
+match_group_by_freq = function(data, group1, group2, group_col, freq_col = 'AF', sig_col, interval = 0.01, sim_times = 5, seed = 12345){
   set.seed(seed)
-  sim_data = replicate(sim_times, match_annotation_by_freq_1set(data, annt1, annt2, annt_col ,freq_col, interval), simplify=FALSE)
-  sim_sum = map_dfr(sim_data, sig_cnt_summary, .id = 'simulation', annt_col=annt_col)
+  sim_data = replicate(sim_times, match_group_by_freq_1set(data, group1, group2, group_col , freq_col, interval), simplify = FALSE)
+  sim_data$sig_cnt = sim_data[ , sig_col]
+  sim_sum = map_dfr(sim_data, sig_cnt_summary, .id = 'simulation')
 
   return(list(sim_data, sim_sum))
 }
 
-match_annotation_by_freq_1set = function(data, annt1, annt2, annt_col = 'annotation',freq_col='AF', interval=0.001){
+match_group_by_freq_1set = function(data, group1, group2, group_col = 'annotation', freq_col = 'AF', interval = 0.01){
   data = set_freq_bins(data = data, freq_col = freq_col, interval = interval)
-  bin1 = data %>% filter(get(annt_col) == check_annotation(annt1)) %>% count(bin_labels)
-  data2 = data %>% filter(get(annt_col) == check_annotation(annt2))
+  bin1 = data %>% filter(get(group_col) == group1) %>% count(bin_labels)
+  data2 = data %>% filter(get(group_col) == group2)
 
   n = nrow(bin1)
   ids = vector()
@@ -189,4 +365,252 @@ match_annotation_by_freq_1set = function(data, annt1, annt2, annt_col = 'annotat
   }
   sims = data2[ids, ]
   return(sims)
+}
+
+match_gene_set_multi_sample = function(gene_list, id_col = 'gene_symbol', sig_col, oversample = F, sim_times = 1000, seed = 1024, save_plot = F, output_path, filename){
+  sub_sum = gene_universe %>%
+    filter(gene_symbol %in% gene_list[ , id_col]) %>%
+    group_by(annotation) %>%
+    sig_cnt_summary(sig_col)
+  sub_lof = gene_universe %>%
+    filter(annotation == 'pLoF') %>%
+    match_subset_by_freq(subset = gene_list, freq_col = 'CAF', id_col = id_col, sig_col = sig_col, oversample = oversample, interval = 0.01, sim_times = sim_times, seed = seed)
+
+  sub_mis = gene_universe %>%
+    filter(annotation == 'missense|LC') %>%
+    match_subset_by_freq(subset = gene_list, freq_col = 'CAF', id_col = id_col, sig_col = sig_col, oversample = oversample, interval = 0.01, sim_times = sim_times, seed = seed)
+
+  sub_syn = gene_universe %>%
+    filter(annotation == 'synonymous') %>%
+    match_subset_by_freq(subset = gene_list, freq_col = 'CAF', id_col = id_col, sig_col = sig_col, oversample = oversample, interval = 0.01, sim_times = sim_times, seed = seed)
+
+  matched_sum = rbind(sub_mis[[2]], sub_lof[[2]], sub_syn[[2]])
+  matched_sum$annotation = factor(rep(c('missense|LC', 'pLoF', 'synonymous'), each = sim_times), levels = annotation_types)
+
+  if(save_plot == T){
+    match_mean = ggplot(matched_sum, aes(x = mean, color = annotation)) +
+      geom_density(alpha = 0.5) + theme_classic() + labs(y = 'Density', x = 'Mean') +
+      geom_vline(data = sub_sum, aes(xintercept = mean, color = annotation), lty = 2) +
+      annotation_color_scale + annotation_fill_scale + themes
+
+    png(paste0(output_path, 'match_mean_', sim_times, filename, '.png'), height = 2.5, width = 4, units = 'in', res = 300)
+    print(match_mean)
+    dev.off()
+
+    match_prop = ggplot(matched_sum, aes(x = prop, color = annotation)) +
+      geom_density(alpha = 0.5 ) + theme_classic() +
+      labs(y = 'Density', x = 'Proportion of Genes with 1 + Hit') +
+      geom_vline(data = sub_sum, aes(xintercept = prop, color = annotation), lty = 2) +
+      scale_x_continuous(label = label_percent(accuracy = 0.1)) +
+      annotation_color_scale + annotation_fill_scale + themes
+
+    png(paste0(output_path, 'match_prop_', sim_times, filename, '.png'), height = 2.5, width = 4, units = 'in', res = 300)
+    print(match_prop)
+    dev.off()
+  }
+  return(matched_sum)
+}
+
+get_var_gene_overlap_count = function(data = var_gene_by_pheno, pheno_group = 'all', normalize = T, print = F){
+  pheno_set = pheno_group
+  if(pheno_set == 'all'){pheno_set = c('categorical', 'continuous', 'icd_first_occurrence')}
+  pheno_group = if_else(pheno_group == 'icd_first_occurrence', 'icd10', pheno_group)
+  data = data %>% filter(trait_type %in% pheno_set)
+  n = if_else(normalize, nrow(data), as.integer(1))
+  if(print){
+    print(paste('Significant associations for', pheno_group, 'Phenotypes'))
+    print(paste('Both gene and variant: ', sum(data %>% select(pheno_gene_var_sig_cnt))/n))
+    print(paste('Gene only: ', sum(data %>% select(pheno_gene_sig_cnt))/n))
+    print(paste('Variant only: ', sum(data %>% select(pheno_var_sig_cnt))/n))
+    print(paste('Neither gene nor variant: ', sum(data %>% select(pheno_none_sig_cnt))/n))
+  }
+  return(data.frame(
+    significant_by_gene = c(T, F, T, F), 
+    significant_by_variant = c(T, T, F, F), 
+    value = c(sum(data %>% select(pheno_gene_var_sig_cnt))/n, 
+              sum(data %>% select(pheno_var_sig_cnt))/n, 
+              sum(data %>% select(pheno_gene_sig_cnt))/n, 
+              sum(data %>% select(pheno_none_sig_cnt))/n ), 
+    category = rep(pheno_group, 4), 
+    label = c('Significant by both', 'Significant by variant', 'Significant by gene', 'None')))
+}
+
+format_full_lambda_data = function(data){
+  data = data  %>%
+    pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+    mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2), )%>%
+    mutate(result_type = factor(result_type, levels = result_types), 
+           trait_type2 = factor(trait_type2, levels=trait_types), )
+  return(data)
+}
+
+format_sig_cnt_summary_data = function(data, pheno_group = 'all', freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt'){
+  data = data %>%
+    mutate(interval = get_freq_interval(get(freq_col))) %>%
+    group_by(interval, annotation) %>% sig_cnt_summary(sig_col) %>%
+    mutate(annotation = factor(annotation, levels = annotation_types), 
+           interval = factor(interval, levels = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')))
+  return(data)
+}
+
+format_count_by_freq_data = function(data, freq_col = 'CAF'){
+  data = data %>%
+    mutate(interval = get_freq_interval(get(freq_col))) %>%
+    group_by(interval, annotation) %>% summarise(cnt = n()) %>%
+    mutate(interval = factor(interval, levels = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')), 
+           annotation = factor(annotation, levels = annotation_types))
+  return(data)
+}
+
+format_random_pheno_p_data = function(data, test_type = 'SKAT-O'){
+  freq_col = if_else(test_type == 'Single-Variant Test', 'af', 'CAF_range')
+  p_col = if_else(test_type == 'Burden Test', 'Pvalue_Burden', 'Pvalue')
+  data = data %>%
+    filter(is.na(modifier) & phenocode %in% random_pheno_subset) %>%
+    group_by(phenocode, get(freq_col)) %>%
+    arrange(get(p_col)) %>%
+    add_count(phenocode) %>%
+    mutate(observed = -log10(get(p_col)), 
+           rank = order(get(p_col)), 
+           expected = -(log10(rank / (n+1))), 
+           phenocode = factor(phenocode, levels = random_pheno_subset), 
+           test = test_type)
+  return(data)
+}
+
+save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing = 3, sig_level, save_plot = F, output_path){
+   icd_labels = sort(deframe(data %>% distinct(icd10)))
+   ctr = ((1:length(icd_labels))-1) * (width +spacing) + width/2
+   data = data %>%
+     mutate(icd_ind = match(icd10, icd_labels)) %>%
+     group_by(icd10) %>%
+     arrange(chr, as.integer(position)) %>%
+     mutate(pos = seq(0, 10, length.out = n()) + (icd_ind-1)*(width+spacing), 
+            icd10 = factor(icd10, levels = names(icd_names), labels = icd_names))
+  icd_mh_plt = data %>%
+    filter(min_p < p_filter) %>%
+    ggplot + aes(x = pos, y = -log10(min_p), color = icd10) +
+    geom_point(size = 0.75) +
+    geom_hline(yintercept = -log10(sig_level), lty = 2)+
+    scale_x_continuous(breaks = ctr, labels = icd_names[icd_labels]) +
+    scale_color_manual(values = manhattan_color) +
+    scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
+    labs(x = '', y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
+    theme_classic()   + themes +
+    theme(legend.position = 'none', 
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 7), 
+          plot.margin = margin(0.8, 0.1, 0.1, 0.1, "cm"), 
+          axis.title = element_text(size = 8), 
+          legend.title = element_text(size = 8, face = 'bold'), 
+          legend.text = element_text(size = 8), )
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(icd_mh_plt)
+    dev.off()
+  }
+  return(icd_mh_plt)
+}
+
+save_prop_by_annt_freq_figure = function(matched_summary, output_path, save_plot = F){
+  plt = matched_summary %>%
+      ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
+      geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
+      labs(y = 'Proportion', x = '')  +
+      scale_y_continuous(label = label_percent(accuracy = 1)) +
+      scale_x_discrete(labels = annotation_names) +
+      annotation_color_scale + annotation_fill_scale  +
+      facet_grid(~interval, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
+      theme(panel.spacing = unit(0, "lines"), 
+            strip.background = element_blank(), 
+            strip.placement = "outside", 
+            strip.text = element_text(face = 'bold'), 
+            axis.text= element_text(size = 10), 
+            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
+  if(save_plot){
+    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_path){
+  plt = cnt_data %>%
+    filter(type == cnt_type) %>%
+    ggplot + aes(x = filter, y = cnt, alpha = filter) +
+    geom_bar(stat = 'identity', position = 'dodge', width = 0.5, fill = '#187bcd') +
+    scale_y_continuous(label = comma) +
+    scale_alpha_discrete(range = c(0.5, 1)) +
+    labs(y = paste('Number of', cnt_type), x = '', alpha = '') +
+    annotation_color_scale + annotation_fill_scale + themes +
+    geom_text(aes(label = cnt), vjust = -0.3, size = 2, position = position_dodge(width = 1), color = '#187bcd') +
+    theme_classic() + themes + theme(legend.position = 'none')+
+    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
+          axis.title = element_text(size = 10), 
+          axis.text = element_text(size = 10), 
+          legend.title = element_text(size = 8, face = 'bold'), 
+          legend.text = element_text(size = 8), )
+  if(save_plot){
+    png(output_path, height = 4, width = 4, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path){
+  freq = if_else(type == 'Groups', 'CAF', 'AF')
+  plt = cnt_data %>%
+  ggplot + aes(x = interval, y = cnt, color = annotation, fill = annotation) +
+  geom_bar(stat ='identity', position = 'dodge') +
+  scale_y_continuous(label = comma) +
+  labs(y = paste('Number of', type), x = paste(freq, 'Interval'))+
+  annotation_color_scale + annotation_fill_scale + themes +
+  geom_text(aes(label = cnt, color = annotation), vjust = -0.3, size = 2, position = position_dodge(width = 1)) +
+  theme_classic() + themes +
+  theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
+        axis.title = element_text(size = 10), 
+        legend.title = element_text(size = 8, face = 'bold'), 
+        legend.text = element_text(size = 8))
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot = F, output_path){
+  if(filter){
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '.txt.bgz'))
+  }else{
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_before_300k_', test, '.txt.bgz'))
+  }
+  var_gene_summary = rbind(get_var_gene_overlap_count(data = var_gene, pheno_group = 'all', normalize = normalize, print = F), 
+                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'icd_first_occurrence', normalize = normalize, print = F), 
+                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'categorical', normalize = normalize, print = F), 
+                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'continuous', normalize = normalize, print = F)) %>%
+    mutate(x_offset = rep(c(-0.25, 0.25, 0.25, -0.25), each = 4), 
+           y_offset = rep(c(0.25, -0.25, 0.25, -0.25), each = 4), 
+           value = round(value, digits = 2))
+
+  figure = var_gene_summary %>%
+    ggplot + aes(x = (1 - significant_by_gene) + x_offset, 
+                 y = significant_by_variant + y_offset, label = value, fill = category) +
+    geom_tile(color = 'darkgray') + theme_void() +
+    trait_fill_scale + geom_text() +
+    geom_hline(yintercept = 0.5, size = 3, color = 'white') +
+    geom_vline(xintercept = 0.5, size = 3, color = 'white') +
+    annotate('text', x = -0.55, y = 0, hjust = 0.5, vjust = 0, angle = 90, label = 'Not significant by variant') +
+    annotate('text', x = -0.55, y = 1, hjust = 0.5, vjust = 0, angle = 90, label = 'Significant by variant') +
+    annotate('text', x = 0, y = 1.55, hjust = 0.5, vjust = 0, label = 'Significant by gene') +
+    annotate('text', x = 1, y = 1.55, hjust = 0.5, vjust = 0, label = 'Not significant by gene')+
+    theme(legend.title = element_text(size = 8, face = 'bold'), 
+          legend.text = element_text(size = 8), )
+  if(save_plot){
+    png(output_path, height = 4, width = 6, units = 'in', res = 300)
+    print(figure)
+    dev.off()
+  }
+  return(figure)
 }
