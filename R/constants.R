@@ -56,6 +56,7 @@ themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10
                strip.background = element_rect( color = "black", size=0.5, linetype="solid") )
 label_type = labeller(trait_type2 = trait_type_names, annotation = annotation_names, result_type = result_names, 
                       CAF_range = caf_names, AF_range = af_names, ac_type = ac_names, gene_set_name = gene_list_names)
+var_cols = cols(pathogenicity = col_character(), polyphen2 = col_character(), most_severe_consequence = col_character(), mean_proportion = col_double())
 
 
 check_annotation = function(annotation){
@@ -228,7 +229,7 @@ save_subset_matched_figure = function(matched_summary, save_plot = F, output_pat
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
     ggplot + aes(x = group, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation) +
     geom_pointrange(stat = "identity", position = position_dodge(width = 0.4)) +
-    labs(y = 'Proportion', x = ' ')  +
+    labs(y = 'Proportion', x = NULL)  +
     scale_y_continuous(label = label_percent(accuracy = 0.1)) +
     annotation_color_scale + annotation_fill_scale  +
     facet_grid(~annotation, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
@@ -249,7 +250,7 @@ save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_pa
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
     ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, alpha = group) +
     geom_pointrange(stat = "identity", position = position_dodge(width = 1)) +
-    labs(y = 'Proportion', x = '', alpha = '')  +
+    labs(y = 'Proportion', x = NULL, alpha = NULL)  +
     scale_y_continuous(label = label_percent(accuracy = 1)) +
     scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_summary$annotation))) +
     annotation_color_scale + annotation_fill_scale  +
@@ -495,7 +496,7 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
     scale_x_continuous(breaks = ctr, labels = icd_names[icd_labels]) +
     scale_color_manual(values = manhattan_color) +
     scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
-    labs(x = '', y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
+    labs(x = NULL, y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
     theme_classic()   + themes +
     theme(legend.position = 'none', 
           axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 7), 
@@ -515,7 +516,7 @@ save_prop_by_annt_freq_figure = function(matched_summary, output_path, save_plot
   plt = matched_summary %>%
       ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
       geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
-      labs(y = 'Proportion', x = '')  +
+      labs(y = 'Proportion', x = NULL)  +
       scale_y_continuous(label = label_percent(accuracy = 1)) +
       scale_x_discrete(labels = annotation_names) +
       annotation_color_scale + annotation_fill_scale  +
@@ -541,7 +542,7 @@ save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_p
     geom_bar(stat = 'identity', position = 'dodge', width = 0.5, fill = '#187bcd') +
     scale_y_continuous(label = comma) +
     scale_alpha_discrete(range = c(0.5, 1)) +
-    labs(y = paste('Number of', cnt_type), x = '', alpha = '') +
+    labs(y = paste('Number of', cnt_type), x = NULL, alpha = NULL) +
     annotation_color_scale + annotation_fill_scale + themes +
     geom_text(aes(label = cnt), vjust = -0.3, size = 2, position = position_dodge(width = 1), color = '#187bcd') +
     theme_classic() + themes + theme(legend.position = 'none')+
