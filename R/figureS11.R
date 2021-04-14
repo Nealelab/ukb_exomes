@@ -6,10 +6,8 @@ figureS11 = function(save_plot = F, output_path){
   # Filtered n_var<2 & coverage<20
   lambda_gene_caf = load_ukb_file('lambda_freq_filtered_gene_300k.txt.bgz')
   lambda_gene_caf = lambda_gene_caf %>%
-    pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-    mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),) %>%
-    mutate(result_type = factor(result_type, levels = result_types),
-           trait_type2 = factor(trait_type2, levels = trait_types),
+    pivot_longer_lambda_data() %>%
+    mutate(trait_type2 = factor(trait_type2, levels = trait_types),
            CAF_range = factor(CAF_range, levels = caf_types))
 
   figure = lambda_gene_caf %>%
