@@ -486,7 +486,7 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
      mutate(icd_ind = match(icd10, icd_labels)) %>%
      group_by(icd10) %>%
      arrange(chr, as.integer(position)) %>%
-     mutate(pos = seq(0, 10, length.out = n()) + (icd_ind-1)*(width+spacing), 
+     mutate(pos = seq(0, width, length.out = n()) + (icd_ind-1)*(width+spacing),
             icd10 = factor(icd10, levels = names(icd_names), labels = icd_names))
   icd_mh_plt = data %>%
     filter(min_p < p_filter) %>%
@@ -544,7 +544,7 @@ save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_p
     scale_alpha_discrete(range = c(0.5, 1)) +
     labs(y = paste('Number of', cnt_type), x = NULL, alpha = NULL) +
     annotation_color_scale + annotation_fill_scale + themes +
-    geom_text(aes(label = cnt), vjust = -0.3, size = 2, position = position_dodge(width = 1), color = '#187bcd') +
+    geom_text(aes(label = cnt), vjust = -0.3, size = 3, position = position_dodge(width = 1), color = '#187bcd') +
     theme_classic() + themes + theme(legend.position = 'none')+
     theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
           axis.title = element_text(size = 10), 
@@ -570,7 +570,8 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
   geom_text(aes(label = cnt, color = annotation), vjust = -0.3, size = 2, position = position_dodge(width = 1)) +
   theme_classic() + themes +
   theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
-        axis.title = element_text(size = 10), 
+        axis.title = element_text(size = 10),
+        axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
         legend.title = element_text(size = 8, face = 'bold'), 
         legend.text = element_text(size = 8))
   if(save_plot){
