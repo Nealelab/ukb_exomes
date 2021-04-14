@@ -32,6 +32,9 @@ gene_list_names = c('Constrained' = 'Constrained', 'Developmental Delay' = 'Deve
 icd_names = c('A' = 'Infectious', 'C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H' = 'Eye', 'I' = 'Circulatory', 
               'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy', 'P' = 'Perinatal', 'Q' = 'Congenital')
 random_pheno_subset = c('random_1e-04', 'random_0.001', 'random_0.01', 'random_0.05', 'random_0.1', 'random_0.2', 'random_0.5', 'random_continuous')
+af_int = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')
+polyphen2_levels = c('probably_damaging', 'possibly_damaging', 'benign')
+polyphen2_labels = c('Probably Damaging', 'Possibly Damaging', 'Benign')
 
 names(ac_names) = ac_types
 names(af_names) = af_types
@@ -248,13 +251,13 @@ save_subset_matched_figure = function(matched_summary, save_plot = F, output_pat
 save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_path){
   plt = matched_summary %>%
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
-    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, alpha = group) +
+    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, pch = group) +
     geom_pointrange(stat = "identity", position = position_dodge(width = 1)) +
     labs(y = 'Proportion', x = NULL, alpha = NULL)  +
     scale_y_continuous(label = label_percent(accuracy = 1)) +
     scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_summary$annotation))) +
     annotation_color_scale + annotation_fill_scale  +
-    scale_alpha_discrete(range = c(0.5, 1)) +
+    scale_shape_manual(name = NULL, values = c(1, 16)) +
     facet_grid(gene_set_name~., labeller = label_type) + theme_classic() + themes+
     coord_flip() +
     theme(panel.spacing = unit(1, "lines"), 
@@ -615,4 +618,11 @@ save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot =
     dev.off()
   }
   return(figure)
+}
+
+pivot_longer_lambda_data = function(data){
+  data = data %>% pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+    mutate(result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),
+           result_type = factor(result_type,levels = result_types))
+  return(data)
 }
