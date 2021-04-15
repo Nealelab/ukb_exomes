@@ -32,6 +32,9 @@ gene_list_names = c('Constrained' = 'Constrained', 'Developmental Delay' = 'Deve
 icd_names = c('A' = 'Infectious', 'C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H' = 'Eye', 'I' = 'Circulatory', 
               'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy', 'P' = 'Perinatal', 'Q' = 'Congenital')
 random_pheno_subset = c('random_1e-04', 'random_0.001', 'random_0.01', 'random_0.05', 'random_0.1', 'random_0.2', 'random_0.5', 'random_continuous')
+af_int = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')
+polyphen2_levels = c('probably_damaging', 'possibly_damaging', 'benign')
+polyphen2_labels = c('Probably Damaging', 'Possibly Damaging', 'Benign')
 
 names(ac_names) = ac_types
 names(af_names) = af_types
@@ -56,6 +59,7 @@ themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10
                strip.background = element_rect( color = "black", size=0.5, linetype="solid") )
 label_type = labeller(trait_type2 = trait_type_names, annotation = annotation_names, result_type = result_names, 
                       CAF_range = caf_names, AF_range = af_names, ac_type = ac_names, gene_set_name = gene_list_names)
+var_cols = cols(pathogenicity = col_character(), polyphen2 = col_character(), most_severe_consequence = col_character(), mean_proportion = col_double())
 
 
 check_annotation = function(annotation){
@@ -228,7 +232,7 @@ save_subset_matched_figure = function(matched_summary, save_plot = F, output_pat
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
     ggplot + aes(x = group, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation) +
     geom_pointrange(stat = "identity", position = position_dodge(width = 0.4)) +
-    labs(y = 'Proportion', x = ' ')  +
+    labs(y = 'Proportion', x = NULL)  +
     scale_y_continuous(label = label_percent(accuracy = 0.1)) +
     annotation_color_scale + annotation_fill_scale  +
     facet_grid(~annotation, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
@@ -247,13 +251,13 @@ save_subset_matched_figure = function(matched_summary, save_plot = F, output_pat
 save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_path){
   plt = matched_summary %>%
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
-    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, alpha = group) +
+    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, pch = group) +
     geom_pointrange(stat = "identity", position = position_dodge(width = 1)) +
-    labs(y = 'Proportion', x = '', alpha = '')  +
+    labs(y = 'Proportion', x = NULL, alpha = NULL)  +
     scale_y_continuous(label = label_percent(accuracy = 1)) +
     scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_summary$annotation))) +
     annotation_color_scale + annotation_fill_scale  +
-    scale_alpha_discrete(range = c(0.5, 1)) +
+    scale_shape_manual(name = NULL, values = c(1, 16)) +
     facet_grid(gene_set_name~., labeller = label_type) + theme_classic() + themes+
     coord_flip() +
     theme(panel.spacing = unit(1, "lines"), 
@@ -485,7 +489,7 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
      mutate(icd_ind = match(icd10, icd_labels)) %>%
      group_by(icd10) %>%
      arrange(chr, as.integer(position)) %>%
-     mutate(pos = seq(0, 10, length.out = n()) + (icd_ind-1)*(width+spacing), 
+     mutate(pos = seq(0, width, length.out = n()) + (icd_ind-1)*(width+spacing),
             icd10 = factor(icd10, levels = names(icd_names), labels = icd_names))
   icd_mh_plt = data %>%
     filter(min_p < p_filter) %>%
@@ -495,7 +499,7 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
     scale_x_continuous(breaks = ctr, labels = icd_names[icd_labels]) +
     scale_color_manual(values = manhattan_color) +
     scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
-    labs(x = '', y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
+    labs(x = NULL, y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
     theme_classic()   + themes +
     theme(legend.position = 'none', 
           axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 7), 
@@ -515,7 +519,7 @@ save_prop_by_annt_freq_figure = function(matched_summary, output_path, save_plot
   plt = matched_summary %>%
       ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
       geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
-      labs(y = 'Proportion', x = '')  +
+      labs(y = 'Proportion', x = NULL)  +
       scale_y_continuous(label = label_percent(accuracy = 1)) +
       scale_x_discrete(labels = annotation_names) +
       annotation_color_scale + annotation_fill_scale  +
@@ -541,9 +545,9 @@ save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_p
     geom_bar(stat = 'identity', position = 'dodge', width = 0.5, fill = '#187bcd') +
     scale_y_continuous(label = comma) +
     scale_alpha_discrete(range = c(0.5, 1)) +
-    labs(y = paste('Number of', cnt_type), x = '', alpha = '') +
+    labs(y = paste('Number of', cnt_type), x = NULL, alpha = NULL) +
     annotation_color_scale + annotation_fill_scale + themes +
-    geom_text(aes(label = cnt), vjust = -0.3, size = 2, position = position_dodge(width = 1), color = '#187bcd') +
+    geom_text(aes(label = cnt), vjust = -0.3, size = 3, position = position_dodge(width = 1), color = '#187bcd') +
     theme_classic() + themes + theme(legend.position = 'none')+
     theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
           axis.title = element_text(size = 10), 
@@ -569,7 +573,8 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
   geom_text(aes(label = cnt, color = annotation), vjust = -0.3, size = 2, position = position_dodge(width = 1)) +
   theme_classic() + themes +
   theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
-        axis.title = element_text(size = 10), 
+        axis.title = element_text(size = 10),
+        axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
         legend.title = element_text(size = 8, face = 'bold'), 
         legend.text = element_text(size = 8))
   if(save_plot){
@@ -613,4 +618,11 @@ save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot =
     dev.off()
   }
   return(figure)
+}
+
+pivot_longer_lambda_data = function(data){
+  data = data %>% pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+    mutate(result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),
+           result_type = factor(result_type,levels = result_types))
+  return(data)
 }
