@@ -40,3 +40,4 @@ figureS12 = function(save_plot = F, output_path){
   return(figure)
 }
 figureS12(save_plot = T, output_path = paste0(output_path, 'figureS12_lambda_gene_before_after_filter.png'))
+
