@@ -572,6 +572,7 @@ def annotate_clinvar_pathogenicity_ht():
     """
     clinvar_ht = clinvar.ht()
     clinvar_ht = clinvar_ht.filter(~clinvar_ht.info.CLNREVSTAT[0].contains('no_assertion'))  # remove clinvar zero star variants
+    clinvar_ht = clinvar_ht.explode(clinvar_ht.info.CLNSIG)
     clinvar_ht = clinvar_ht.annotate(pathogenicity=hl.case() \
                                      .when(hl.literal({'Pathogenic', 'Likely_pathogenic', 'Pathogenic/Likely_pathogenic'}).contains(clinvar_ht.info.CLNSIG), 'P/LP') \
                                      .when(hl.literal({'Uncertain_significance'}).contains(clinvar_ht.info.CLNSIG), 'VUS') \
