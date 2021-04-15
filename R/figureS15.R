@@ -5,11 +5,10 @@ output_path = '~/Desktop/'
 figureS15 = function(save_plot = F, output_path){
   lambda_by_gene = load_ukb_file('lambda_by_gene_filtered_300k.txt.bgz')
   lambda_by_gene = lambda_by_gene %>%
-    pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+    pivot_longer() %>%
     mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
-           result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),) %>%
-    mutate(annotation = factor(annotation,levels = annotation_types),
-           result_type = factor(result_type,levels = result_types))
+           annotation = factor(annotation,levels = annotation_types))
+
   gene_cnt = lambda_by_gene %>%
     filter(trait_type == 'all') %>%
     group_by(result_type, annotation) %>%
@@ -34,3 +33,4 @@ figureS15 = function(save_plot = F, output_path){
   return(figure)
 }
 figureS15(save_plot = T, output_path = paste0(output_path, 'figureS15_lambda_dist_by_gene_filtered.png'))
+
