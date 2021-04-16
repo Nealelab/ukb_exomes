@@ -1,20 +1,13 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 output_path = '~/Desktop/'
-# Burden Count: c(1919, 1506, 1269, 1095, 931, 762, 602, 415, 201)
 
 figureS16 = function(save_plot = F, filter = T, output_path){
-  if(filter){
-    corr = load_ukb_file('pheno_corr_after300k.txt.bgz')
-    count = data.frame(
-      Count = c(1113, 954, 831, 705, 607, 480, 337, 210, 82),
-      Corr = seq(0.1, 0.9, 0.1))
-  }else{
-    corr = load_ukb_file('pheno_corr_before300k.txt.bgz')
-    count = data.frame(
-      Count = c(1343, 1084, 925, 774, 656, 515, 367, 232, 98),
-      Corr = seq(0.1, 0.9, 0.1))
-  }
+  corr = load_ukb_file('pheno_corr_before300k.txt.bgz')
+  count = data.frame(
+    Count = c(1343, 1084, 925, 774, 656, 515, 367, 232, 98), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
+    Corr = seq(0.1, 0.9, 0.1))
+
   corr = corr %>% filter(i != j)
 
   figureS16a = corr %>%
@@ -40,3 +33,4 @@ figureS16 = function(save_plot = F, filter = T, output_path){
 }
 
 figureS16(save_plot = T, filter = F, output_path = paste0(output_path, 'figureS16_pheno_corr_count.png'))
+
