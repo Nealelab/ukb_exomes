@@ -1,6 +1,7 @@
 import hail as hl
 import argparse
 from ukb_exomes import *
+from ukb_common import *
 
 
 def main(args):
@@ -18,13 +19,15 @@ def main(args):
 
             if args.variant_results:
                 write_lambda_hts(result_type='var', freq_lower=args.af_lower, var_filter=True, extension=args.extension, overwrite=args.overwrite)
-
     if args.get_sig_cnts:
         filter_flag = '_filtered'
         if args.sig_without_filters:
             phenos_to_keep = None
             genes_to_keep = None
             filter_flag = ''
+            if args.get_related_pheno_cnts:
+                ht = hl.read_matrix_table(get_results_mt_path()).cols()
+                get_related_pheno_cnt_list(ht)
         else:
             lambda_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_full_filtered'))
             lambda_by_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_by_gene_filtered', result_type=''))
@@ -37,6 +40,8 @@ def main(args):
             genes_to_keep = genes_to_keep.key_by('gene_id', 'gene_symbol', 'annotation')
 
             phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name=f'lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
+            if args.get_related_pheno_cnts:
+                get_related_pheno_cnt_list(phenos_to_keep)
             phenos_to_remove = get_corr_phenos_ht(r_2=args.r2_cut, tie_breaker=more_cases_tie_breaker)
             phenos_to_keep = phenos_to_keep.filter(hl.is_defined(phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
                                                                                          pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
@@ -124,6 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--random_phenos', help='Compute lambda GC for random phenotypes', action='store_true')
     parser.add_argument('--lambda_without_filters', help='Compute lambda GC without any filters', action='store_true')
     parser.add_argument('--get_p_values', help='Generate P value table', action='store_true')
+    parser.add_argument('--get_related_pheno_cnts', help='Count the number of correlated phenotypes to remove', action='store_true')
     parser.add_argument('--get_sig_cnts', help='Count the number of significant associations', action='store_true')
     parser.add_argument('--sig_without_filters', help='Get significant associations without any filters', action='store_true')
     parser.add_argument('--add_variant_info', help='Add extra annotation information on variants', action='store_true')
