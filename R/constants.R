@@ -33,8 +33,8 @@ icd_names = c('A' = 'Infectious', 'C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' =
               'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy', 'P' = 'Perinatal', 'Q' = 'Congenital')
 random_pheno_subset = c('random_1e-04', 'random_0.001', 'random_0.01', 'random_0.05', 'random_0.1', 'random_0.2', 'random_0.5', 'random_continuous')
 af_int = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')
-polyphen2_levels = c('probably_damaging', 'possibly_damaging', 'benign')
-polyphen2_labels = c('Probably Damaging', 'Possibly Damaging', 'Benign')
+polyphen2_levels = c('benign', 'possibly_damaging', 'probably_damaging')
+polyphen2_labels = c('Benign', 'Possibly Damaging', 'Probably Damaging')
 
 names(ac_names) = ac_types
 names(af_names) = af_types
