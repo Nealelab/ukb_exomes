@@ -4,9 +4,7 @@ output_path = '~/Desktop/'
 
 figureS17 = function(type = 'full', save_plot = F, output_path){
   height_UKB  = load_ukb_file('height_beta.txt.bgz', force_cols = cols(locus = col_character())) %>%
-    mutate(alleles = str_split(markerID, '_') %>% map_chr(., 2), 
-           REF = str_split(alleles, '/') %>% map_chr(., 1),
-           ALT = str_split(alleles, '/') %>% map_chr(., 2))
+    separate(markerID, c("chrom", "position", "REF", "ALT"), sep = "[^[:alnum:]]")
 
   if(type == 'full'){
     download.file("https://portals.broadinstitute.org/collaboration/giant/images/5/59/Height_All_add_SV.txt.gz", 'giant_height.txt.gz')
