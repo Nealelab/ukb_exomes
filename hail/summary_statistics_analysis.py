@@ -29,25 +29,27 @@ def main(args):
                 ht = hl.read_matrix_table(get_results_mt_path()).cols()
                 get_related_pheno_cnt_list(ht)
         else:
-            # lambda_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_full_filtered'))
-            # lambda_by_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_by_gene_filtered', result_type=''))
-            #
-            # lambda_by_gene_filtered = get_lambda_filtered_ht(lambda_by_gene, lambda_name=f'all_lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
-            # gene_ids_to_keep_syn = lambda_by_gene_filtered.filter(lambda_by_gene_filtered.annotation == 'synonymous')
-            # lambda_by_gene = lambda_by_gene.key_by('gene_id', 'gene_symbol')
-            # gene_ids_to_keep_syn = gene_ids_to_keep_syn.key_by('gene_id', 'gene_symbol')
-            # genes_to_keep = lambda_by_gene.filter(hl.is_defined(gene_ids_to_keep_syn.index(lambda_by_gene.key)))
-            # genes_to_keep = genes_to_keep.key_by('gene_id', 'gene_symbol', 'annotation')
-            #
-            # phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name=f'lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
-            # if args.get_related_pheno_cnts:
-            #     get_related_pheno_cnt_list(phenos_to_keep)
-            # phenos_to_remove = get_corr_phenos_ht(r_2=args.r2_cut, tie_breaker=more_cases_tie_breaker)
-            # phenos_to_keep = phenos_to_keep.filter(hl.is_defined(phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
-            #                                                                              pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
-            #                                                                              modifier=phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
-            # genes_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='genes_to_keep', result_type=''), overwrite=args.overwrite)
-            # phenos_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='phenos_to_keep', result_type=''), overwrite=args.overwrite)
+            if args.overwrite_qc_tables:
+                lambda_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_full_filtered'))
+                lambda_by_gene = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='lambda_by_gene_filtered', result_type=''))
+
+                lambda_by_gene_filtered = get_lambda_filtered_ht(lambda_by_gene, lambda_name=f'all_lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
+                gene_ids_to_keep_syn = lambda_by_gene_filtered.filter(lambda_by_gene_filtered.annotation == 'synonymous')
+                lambda_by_gene = lambda_by_gene.key_by('gene_id', 'gene_symbol')
+                gene_ids_to_keep_syn = gene_ids_to_keep_syn.key_by('gene_id', 'gene_symbol')
+                genes_to_keep = lambda_by_gene.filter(hl.is_defined(gene_ids_to_keep_syn.index(lambda_by_gene.key)))
+                genes_to_keep = genes_to_keep.key_by('gene_id', 'gene_symbol', 'annotation')
+
+                phenos_to_keep = get_lambda_filtered_ht(lambda_gene, lambda_name=f'lambda_gc_{args.result_type.lower()}', lower=args.lambda_lower, upper=args.lambda_upper)
+                if args.get_related_pheno_cnts:
+                    get_related_pheno_cnt_list(phenos_to_keep)
+                phenos_to_remove = get_corr_phenos_ht(r_2=args.r2_cut, tie_breaker=more_cases_tie_breaker)
+                phenos_to_keep = phenos_to_keep.filter(hl.is_defined(phenos_to_remove.key_by(trait_type=phenos_to_remove.node.trait_type, phenocode=phenos_to_remove.node.phenocode,
+                                                                                             pheno_sex=phenos_to_remove.node.pheno_sex, coding=phenos_to_remove.node.coding,
+                                                                                             modifier=phenos_to_remove.node.modifier, )[phenos_to_keep.key]), keep=False)
+                genes_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='genes_to_keep', result_type=''), overwrite=args.overwrite)
+                phenos_to_keep.write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset='phenos_to_keep', result_type=''), overwrite=args.overwrite)
+
             genes_to_keep = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'genes_to_keep_{args.result_type.lower()}', result_type=''))
             phenos_to_keep = hl.read_table(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'phenos_to_keep_{args.result_type.lower()}', result_type=''))
 
@@ -134,6 +136,7 @@ if __name__ == '__main__':
     parser.add_argument('--get_related_pheno_cnts', help='Count the number of correlated phenotypes to remove', action='store_true')
     parser.add_argument('--get_sig_cnts', help='Count the number of significant associations', action='store_true')
     parser.add_argument('--sig_without_filters', help='Get significant associations without any filters', action='store_true')
+    parser.add_argument('--overwrite_qc_tables', help='Overwite QCed gene and phenotype table', action='store_true')
     parser.add_argument('--add_variant_info', help='Add extra annotation information on variants', action='store_true')
     parser.add_argument('--get_sig_betas', help='Get effect sizes for significant associations', action='store_true')
     parser.add_argument('--gene_results', help='Use gene-level results', action='store_true')

@@ -634,7 +634,7 @@ def annotate_additional_info_mt(result_mt: hl.MatrixTable, result_type: str = 'g
 
 def annotate_synonymous_lambda_ht(lambda_ht, test_type):
     assert test_type.lower() in TESTS, 'Invalid test type'
-    lambda_ht_syn = lambda_ht.filter((lambda_ht.annotation == 'synonymous'))
+    lambda_ht_syn = lambda_ht.filter(lambda_ht.annotation == 'synonymous')
     lambda_ht_syn = lambda_ht_syn.key_by('gene_id', 'gene_symbol')
     lambda_ht = lambda_ht.annotate(**{f'synonymous_lambda_gc_{test_type.lower()}':lambda_ht_syn.index(lambda_ht.gene_id, lambda_ht.gene_symbol)[f'annotation_lambda_gc_{test_type.lower()}']})
     return lambda_ht
