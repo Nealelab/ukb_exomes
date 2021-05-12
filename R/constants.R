@@ -248,27 +248,29 @@ save_subset_matched_figure = function(matched_summary, save_plot = F, output_pat
   return(plt)
 }
 
-save_subset_matched_figure2 = function(matched_summary, save_plot = F, output_path){
+save_subset_matched_figure2 = function(matched_summary, matched_test, save_plot = F, output_path){
   plt = matched_summary %>%
     mutate(annotation = factor(annotation, levels = annotation_types)) %>%
-    ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, pch = group) +
-    geom_pointrange(stat = "identity", position = position_dodge(width = 1)) +
+    ggplot +
+    geom_pointrange(aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, pch = group),
+                    stat = "identity", position = position_dodge(width = 1)) +
     labs(y = 'Proportion', x = NULL, alpha = NULL)  +
-    scale_y_continuous(label = label_percent(accuracy = 1)) +
+    scale_y_continuous(label = label_percent(accuracy = 1), breaks = c(0,0.05,0.10,0.15)) +
     scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_summary$annotation))) +
     annotation_color_scale + annotation_fill_scale  +
     scale_shape_manual(name = NULL, values = c(1, 16)) +
-    facet_grid(gene_set_name~., labeller = label_type) + theme_classic() + themes+
-    coord_flip() +
-    theme(panel.spacing = unit(1, "lines"), 
-        axis.text= element_text(size = 14), 
-        strip.background = element_blank(), 
-        strip.placement = "outside", 
-        strip.text = element_text(face='bold', size=14), 
-        strip.text.x = element_blank(), 
-        legend.text = element_text(size = 13), 
-        legend.title = element_text(size = 13), 
-        axis.title = element_text(size = 13))
+    facet_wrap(gene_set_name~., nrow = 4, labeller = label_type) + theme_classic() + themes+
+    coord_flip(ylim = c(0,0.15)) +
+    theme(panel.spacing = unit(1, "lines"),
+        axis.text= element_text(size = 14),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.text = element_text(face='bold', size=14),
+        strip.text.y = element_blank(),
+        legend.text = element_text(size = 13),
+        legend.title = element_text(size = 13),
+        axis.title = element_text(size = 13)) +
+    geom_text(data = matched_test, aes(x = 4-as.numeric(annotation), y = 0.15, label = sig_label), size = 6)
   if(save_plot){
     png(output_path, height = 10, width = 5, units = 'in', res = 300)
     print(plt)
@@ -502,11 +504,12 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
     labs(x = NULL, y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
     theme_classic()   + themes +
     theme(legend.position = 'none', 
-          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 7), 
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 12),
+          axis.text.y = element_text(size = 12),
           plot.margin = margin(0.8, 0.1, 0.1, 0.1, "cm"), 
-          axis.title = element_text(size = 8), 
-          legend.title = element_text(size = 8, face = 'bold'), 
-          legend.text = element_text(size = 8), )
+          axis.title = element_text(size = 14),
+          legend.title = element_text(size = 12, face = 'bold'),
+          legend.text = element_text(size = 12), )
   if(save_plot){
     png(output_path, height = 4, width = 6, units = 'in', res = 300)
     print(icd_mh_plt)
@@ -587,7 +590,7 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
 
 save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot = F, output_path){
   if(filter){
-    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '.txt.bgz'))
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '_1e-4.txt.bgz'))
   }else{
     var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_before_300k_', test, '.txt.bgz'))
   }

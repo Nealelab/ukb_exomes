@@ -1,7 +1,7 @@
 from ukbb_qc.resources.sample_qc import interval_qc_path
 from ukbb_qc.resources.variant_qc import var_annotations_ht_path
 from ukbb_qc.resources.basics import release_ht_path
-from ukb_common.utils.annotations import annotation_case_builder
+from ukbb_common import *
 from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.vep import process_consequences
 from ..resources import *
@@ -460,7 +460,7 @@ def get_related_pheno_cnt_list(pheno_ht: hl.Table):
     for k in np.arange(0.1, 1.0, 0.1):
         print(k)
         related = corr.filter((corr.entry ** 2 >= k) & (corr.i != corr.j))
-        pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False)
+        pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=more_cases_tie_breaker)
         l.append(pheno_to_remove.count())
     return l
 
@@ -631,3 +631,10 @@ def annotate_additional_info_mt(result_mt: hl.MatrixTable, result_type: str = 'g
                                      tx_annotation_csq=vep[result_mt.row_key].tx_annotation_csq,
                                      mean_proportion_expressed=vep[result_mt.row_key].mean_proportion)
     return mt
+
+def annotate_synonymous_lambda_ht(lambda_ht, test_type):
+    assert test_type.lower() in TESTS, 'Invalid test type'
+    lambda_ht_syn = lambda_ht.filter(lambda_ht.annotation == 'synonymous')
+    lambda_ht_syn = lambda_ht_syn.key_by('gene_id', 'gene_symbol')
+    lambda_ht = lambda_ht.annotate(**{f'synonymous_lambda_gc_{test_type.lower()}':lambda_ht_syn.index(lambda_ht.gene_id, lambda_ht.gene_symbol)[f'annotation_lambda_gc_{test_type.lower()}']})
+    return lambda_ht

@@ -36,8 +36,18 @@ figure4 = function(save_plot = F, output_path){
            group = factor(group, levels = c('Background', 'Test Set')))
   matched$panel = c(rep(rep(c(1, 2), each = 6), 4))
 
-  figure4_p1 = matched %>% filter(panel == 1) %>% save_subset_matched_figure2(.)
-  figure4_p2 = matched %>% filter(panel == 2) %>% save_subset_matched_figure2(.)
+  matched_test_fisher = matched %>%
+    mutate(no_sig_cnt = cnt - sig_cnt) %>%
+    select(sig_cnt, no_sig_cnt, gene_set_name, annotation, panel) %>%
+    group_by(annotation, gene_set_name, panel)%>%
+    group_modify(~ broom::tidy(fisher.test(as.matrix(.)))) %>%
+    merge(.,matched %>% group_by(annotation, gene_set_name) %>% summarise(prop = max(prop)), by = c('annotation', 'gene_set_name')) %>%
+    mutate(sig_label = if_else(p.value < 0.001, '*', ''),
+           annotation = factor(annotation, levels = annotation_types), ) %>%
+    filter(p.value< 0.001)
+
+  figure4_p1 = matched %>% filter(panel == 1) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 1))
+  figure4_p2 = matched %>% filter(panel == 2) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 2))
   figure = ggpubr::ggarrange(figure4_p1, figure4_p2, ncol = 2, common.legend = TRUE)
   if(save_plot){
     png(output_path, height = 10, width = 7.5, units = 'in', res = 300)

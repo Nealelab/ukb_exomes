@@ -718,7 +718,7 @@ var_sig_long = var_sig_after %>%
 get_two_col_correlation_table(var_sig_after, group_col = 'annotation', col1 = 'AF', col2 = 'all_sig_pheno_cnt')
 get_two_col_correlation_table(gene_sig_after, group_col = 'annotation', col1 = 'CAF', col2 = 'all_sig_pheno_cnt')
 
-figure2d(filter = T, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_norm_', test, '.png'))
-figure2d(filter = T, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_count_', test, '.png'))
-figure2d(filter = F, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_norm_', test, '.png'))
-figure2d(filter = F, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_count_', test, '.png'))
+save_var_gene_comparison_table(filter = T, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_norm_', test, '.png'))
+save_var_gene_comparison_table(filter = T, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_count_', test, '.png'))
+save_var_gene_comparison_table(filter = F, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_norm_', test, '.png'))
+save_var_gene_comparison_table(filter = F, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_count_', test, '.png'))

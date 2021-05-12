@@ -5,7 +5,7 @@ output_path = '~/Desktop/'
 figureS16 = function(save_plot = F, filter = T, output_path){
   corr = load_ukb_file('pheno_corr_before300k.txt.bgz')
   count = data.frame(
-    Count = c(1343, 1084, 925, 774, 656, 515, 367, 232, 98), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
+    Count = c(1338, 1085, 926, 773, 650, 513, 367, 232, 98), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
     Corr = seq(0.1, 0.9, 0.1))
 
   corr = corr %>% filter(i != j)
