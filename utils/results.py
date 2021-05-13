@@ -24,7 +24,7 @@ def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gen
     :rtype: str
     """
     result_type = result_type if result_type == '' else f'_{result_type}'
-    return f'{public_bucket}/{tranche}/{subdir}/{dataset}_{result_type}_{tranche}.{extension}'
+    return f'{public_bucket}/{tranche}/{subdir}/{dataset}{result_type}_{tranche}.{extension}'
 
 def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
     """
@@ -421,7 +421,7 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=tie_breaker)
     return pheno_to_remove
 
-def export_ht_to_txt(path_to_ht: str, output_filename: str):
+def export_ht_to_txt_bgz(path_to_ht: str, output_filename: str):
     """
     Convert Hail Table to txt.bgz
     :param str path_to_ht: Path to input hail table
@@ -429,6 +429,21 @@ def export_ht_to_txt(path_to_ht: str, output_filename: str):
     """
     ht = hl.read_table(path_to_ht)
     ht.export(f'{public_bucket}/{tranche}/{sub_folder}/{output_filename}.txt.bgz')
+
+def export_all_ht_to_txt_bgz(sub_dir:str, tranche: str = CURRENT_TRANCHE):
+    """
+    Convert all Hail Tables to txt.bgz
+    :param str sub_dir: sub directory where the Hail Tables are stored
+    :param str tranche: Tranche of data to use
+    """
+    files = subprocess.check_output(f"gsutil ls {public_bucket}/{tranche}/{sub_dir}/", shell=True)
+    files = files.decode("utf-8").split('\n')
+    import re
+    ht_list = [file for file in files if file.endswith('.ht/')]
+    for ht in ht_list:
+        name = re.split('/|\\.', ht)[-3]
+        export_ht_to_txt_bgz(ht, sub_dir, name)
+
 
 def get_related_pheno_cnt_list(pheno_ht: hl.Table):
     """
