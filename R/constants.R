@@ -107,7 +107,7 @@ get_mean_prop_interval = function(mean_proportion){
 
 
 get_ukb_data_url = function() {
-  return(paste0('https://storage.googleapis.com/ukbb-exome-public/summary_statistics_analysis/'))
+  return(paste0('https://storage.googleapis.com/ukbb-exome-public/300k/'))
 }
 
 
@@ -463,7 +463,7 @@ format_count_by_freq_data = function(data, freq_col = 'CAF'){
   data = data %>%
     mutate(interval = get_freq_interval(get(freq_col))) %>%
     group_by(interval, annotation) %>% summarise(cnt = n()) %>%
-    mutate(interval = factor(interval, levels = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')), 
+    mutate(interval = factor(interval, levels = c('(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')),
            annotation = factor(annotation, levels = annotation_types))
   return(data)
 }
@@ -590,9 +590,9 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
 
 save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot = F, output_path){
   if(filter){
-    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '_1e-4.txt.bgz'))
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
   }else{
-    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_before_300k_', test, '.txt.bgz'))
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_unfiltered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
   }
   var_gene_summary = rbind(get_var_gene_overlap_count(data = var_gene, pheno_group = 'all', normalize = normalize, print = F), 
                            get_var_gene_overlap_count(data = var_gene, pheno_group = 'icd_first_occurrence', normalize = normalize, print = F), 
@@ -624,8 +624,8 @@ save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot =
 }
 
 pivot_longer_lambda_data = function(data){
-  data = data %>% pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-    mutate(result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2),
+  data = data %>% pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
+    mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),
            result_type = factor(result_type,levels = result_types))
   return(data)
 }

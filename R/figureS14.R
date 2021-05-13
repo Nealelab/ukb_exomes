@@ -1,10 +1,11 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS14 = function(save_plot = F, output_path){
-  lambda_gene_annt = load_ukb_file('lambda_annt_filtered_gene_300k.txt.bgz')
+  lambda_gene_annt = load_ukb_file('lambda_by_pheno_annt_filtered_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
   lambda_gene_annt = lambda_gene_annt %>%
+    select(-c(7:9)) %>%
     pivot_longer_lambda_data() %>%
     mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
            annotation = factor(annotation,levels = annotation_types),

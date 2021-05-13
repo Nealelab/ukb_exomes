@@ -1,11 +1,11 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS16 = function(save_plot = F, filter = T, output_path){
-  corr = load_ukb_file('pheno_corr_before300k.txt.bgz')
+  corr = load_ukb_file('pheno_correlation_before_filter_300k.txt.bgz', subfolder = 'qc/')
   count = data.frame(
-    Count = c(1338, 1085, 926, 773, 650, 513, 367, 232, 98), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
+    Count = c(1271, 1024, 869, 723, 602, 474, 333, 209, 90), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
     Corr = seq(0.1, 0.9, 0.1))
 
   corr = corr %>% filter(i != j)

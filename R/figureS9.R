@@ -1,10 +1,10 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS9 = function(save_plot = F, output_path){
   # Filtered n_var<2 & coverage<20
-  rp_lambda_gene_caf = load_ukb_file('rp_lambda_gene_af300k.txt.bgz')
+  rp_lambda_gene_caf = load_ukb_file('rp_lambda_gene_af300k.txt.bgz', subfolder='analysis/')
   rp_lambda_gene_caf = rp_lambda_gene_caf %>%
     pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
     mutate(result_type = str_split(labels, "lambda_gc_") %>% map_chr(., 2)) %>%

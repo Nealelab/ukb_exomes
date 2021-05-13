@@ -1,10 +1,10 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 test = 'skato'
-output = '~/skato/'
+output = '~/Desktop/final_figures/'
 
-gene_sig_after = load_ukb_file(paste0('sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-var_sig_after = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), force_cols = var_cols)
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
+var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/', force_cols = var_cols)
 
 figure3c = function(save_plot=F, output_path){
   pext = var_sig_after %>%

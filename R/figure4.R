@@ -1,11 +1,11 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output = '~/skato/'
+output = '~/Desktop/final_figures/'
 test = 'skato'
 
-gene_sig_after = load_ukb_file(paste0('sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-gene_info = load_ukb_file('gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz')
-gene_DD = load_ukb_file('forKonrad_sig31kDNM_consensus_genes_2021_01_12.txt')
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
+gene_info = load_ukb_file('gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz', subfolder = 'analysis/')
+gene_DD = load_ukb_file('forKonrad_sig31kDNM_consensus_genes_2021_01_12.txt', subfolder = 'analysis/')
 ## https://github.com/macarthur-lab/gene_lists.git
 setwd('~/gene_lists/lists/')
 figure4 = function(save_plot = F, output_path){

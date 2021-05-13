@@ -1,9 +1,9 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS17 = function(type = 'full', save_plot = F, output_path){
-  height_UKB  = load_ukb_file('height_beta.txt.bgz', force_cols = cols(locus = col_character())) %>%
+  height_UKB  = load_ukb_file('height_beta.txt.bgz', subfolder = 'analysis/', force_cols = cols(locus = col_character())) %>%
     separate(markerID, c("chrom", "position", "REF", "ALT"), sep = "[^[:alnum:]]")
 
   if(type == 'full'){

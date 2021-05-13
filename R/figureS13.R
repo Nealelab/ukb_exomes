@@ -1,10 +1,11 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS13 = function(save_plot = T, output_path){
-  lambda_by_gene_before_coverage = load_ukb_file('lambda_by_gene_before_coverage_filtered_300k.txt.bgz')
+  lambda_by_gene_before_coverage = load_ukb_file('lambda_by_gene_before_coverage_filtered_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
   lambda_by_gene_before_coverage = lambda_by_gene_before_coverage %>%
+    select(-c(6:8)) %>%
     pivot_longer_lambda_data( ) %>%
     mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
            coverage_int = get_coverage_interval(mean_coverage),
@@ -30,6 +31,7 @@ figureS13 = function(save_plot = T, output_path){
     labs(y = 'Gene Lambda GC', x = 'Mean Coverage') +
     theme_classic() + ylim(0, 2) +
     annotation_color_scale + annotation_fill_scale +  themes +
+    theme(axis.text.x = element_text(size = 7)) +
     facet_grid(trait_type~annotation,scale = 'free', labeller = label_type)
   figure = ggarrange(figureS13a, figureS13b,  labels = c('(A) SKAT-O', '(B) Burden Test'), nrow = 2,
                   label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
