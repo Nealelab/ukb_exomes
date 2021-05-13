@@ -1,24 +1,19 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 test = 'skato'
-output = '~/skato/'
+output = '~/Desktop/final_figures/'
 
-gene_sig_before = load_ukb_file('sig_cnt_before_gene_300k.txt.bgz')
-var_sig_before = load_ukb_file('sig_cnt_before_var_300k.txt.bgz', force_cols = var_cols)
-pheno_sig_before = load_ukb_file('pheno_sig_cnt_before_gene_300k.txt.bgz')
-pheno_var_sig_before = load_ukb_file('pheno_sig_cnt_before_var_300k.txt.bgz')
-
-gene_sig_after = load_ukb_file(paste0('sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-var_sig_after = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), force_cols = var_cols)
-pheno_sig_after = load_ukb_file(paste0('pheno_sig_cnt_after_gene_300k_', test, '.txt.bgz'))
-pheno_var_sig_after = load_ukb_file(paste0('pheno_sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'))
-
-var_sig_after  = var_sig_after %>% filter(AF>1e-4)
+gene = load_ukb_file('gene_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
+var = load_ukb_file('variant_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
+pheno = load_ukb_file('pheno_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
 
 figure1 = function(save_plot = F, output_path){
   figure1_cnt = data.frame(
     type = rep(c('Variants', 'Groups', 'Phenotypes'), 2),
-    cnt = as.integer(c(nrow(var_sig_before), nrow(gene_sig_before), nrow(pheno_sig_before), nrow(var_sig_after), nrow(gene_sig_after), nrow(pheno_sig_after))),
+    cnt = as.integer(c(nrow(var), nrow(gene), nrow(pheno),
+                       sum(var$keep_var_af & var$keep_var_annt),
+                       sum(gene$keep_gene_caf & gene$keep_gene_coverage & gene$keep_gene_n_var & gene[paste0('keep_gene_',test)], na.rm = TRUE),
+                       sum(pheno$keep_pheno_unrelated & pheno[paste0('keep_pheno_', test)]))),
     filter = rep(c('Before Filtering', 'After Filtering'), each = 3)
   ) %>% mutate(filter = factor(filter, levels = c('Before Filtering', 'After Filtering')))
 
@@ -26,8 +21,13 @@ figure1 = function(save_plot = F, output_path){
   figure1b = save_count_barplot_figure(cnt_data = figure1_cnt, cnt_type = 'Variants',  save_plot = T, output_path = paste0(output, 'figure1b_var_cnt.png'))
   figure1c = save_count_barplot_figure(cnt_data = figure1_cnt, cnt_type = 'Groups',  save_plot = T, output_path = paste0(output, 'figure1c_gene_cnt.png'))
 
-  gene_cnt_by_freq = format_count_by_freq_data(gene_sig_after, freq_col = 'CAF')
-  var_cnt_by_freq = format_count_by_freq_data(var_sig_after, freq_col = 'AF')
+  gene_cnt_by_freq = gene %>%
+    filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var & get(paste0('keep_gene_',test))) %>%
+    format_count_by_freq_data(freq_col = 'CAF')
+  var_cnt_by_freq = var %>%
+    filter(keep_var_af & keep_var_annt) %>%
+    mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation)) %>%
+    format_count_by_freq_data(freq_col = 'AF')
 
   figure1d = save_count_by_freq_figure(cnt_data = var_cnt_by_freq, type = 'Variants', save_plot = T, output_path = paste0(output, 'figure1d_var_cnt_by_AF.png'))
   figure1e = save_count_by_freq_figure(cnt_data = gene_cnt_by_freq, type = 'Groups', save_plot = T, output_path = paste0(output, 'figure1e_gene_cnt_by_CAF.png'))

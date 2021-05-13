@@ -1,9 +1,9 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 test = 'skato'
-output = '~/Desktop/Figures/skato_collection/'
+output = '~/Desktop/final_figures/'
 
-var_sig_after = load_ukb_file(paste0('sig_cnt_after_SErm_var_300k_', test, '.txt.bgz'), force_cols = var_cols)
+var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/' ,force_cols = var_cols)
 
 figureS18 = function(save_plot = F, output_path){
   polyphen_sum = var_sig_after %>%

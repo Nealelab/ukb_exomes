@@ -1,10 +1,10 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS12 = function(save_plot = F, output_path){
-  lambda_gene_full_before = load_ukb_file('lambda_gene_full300k.txt.bgz')
-  lambda_gene_full_after = load_ukb_file('lambda_full_filtered_gene_300k.txt.bgz')
+  lambda_gene_full_before = load_ukb_file('lambda_by_pheno_full_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
+  lambda_gene_full_after = load_ukb_file('lambda_by_pheno_full_filtered_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
 
   lambda_gene_full_before = format_full_lambda_data(lambda_gene_full_before)
   lambda_gene_full_after = format_full_lambda_data(lambda_gene_full_after)
@@ -28,7 +28,8 @@ figureS12 = function(save_plot = F, output_path){
     trait_color_scale + trait_fill_scale +
     facet_wrap(~result_type, ncol = 3, labeller = label_type) + themes +
     theme(legend.position = 'none',
-          plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"))
+          plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"),
+          axis.text.x = element_text(size = 6))
 
   figure = ggarrange(figureS12a, figureS12b,  labels = c('(A) Before', '(B) After'), nrow = 2,
                   label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))

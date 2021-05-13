@@ -1,10 +1,10 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/'
+output_path = '~/Desktop/final_figures/'
 
 figureS11 = function(save_plot = F, output_path){
   # Filtered n_var<2 & coverage<20
-  lambda_gene_caf = load_ukb_file('lambda_freq_filtered_gene_300k.txt.bgz')
+  lambda_gene_caf = load_ukb_file('lambda_by_pheno_freq_filtered_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
   lambda_gene_caf = lambda_gene_caf %>%
     pivot_longer_lambda_data() %>%
     mutate(trait_type2 = factor(trait_type2, levels = trait_types),
@@ -17,7 +17,8 @@ figureS11 = function(save_plot = F, output_path){
     geom_hline(yintercept = 1, lty = 2) +
     scale_x_log10(label = comma, limits = c(2, NA)) +
     trait_color_scale + trait_fill_scale +
-    facet_grid(result_type~CAF_range, labeller = label_type) + themes
+    facet_grid(result_type~CAF_range, labeller = label_type) + themes +
+    theme(axis.text.x = element_text(size = 6))
 
   if(save_plot){
     png(output_path, height = 5, width = 9, units = 'in', res = 300)
@@ -26,6 +27,7 @@ figureS11 = function(save_plot = F, output_path){
   }
   return(figure)
 }
+
 figureS11(save_plot = T, output_path = paste0(output_path, 'figureS11_lambda_gene_by_caf.png'))
 
 

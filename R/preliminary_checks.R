@@ -689,6 +689,31 @@ print(p_pheno_var_sig_annt)
 dev.off()
 
 # --------Summary Statistics----------
+gene = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/') %>% mutate(annotation = factor(annotation, levels = annotation_types))
+pheno_var = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_var_300k.txt.bgz'), subfolder = 'analysis/')
+var = load_ukb_file('variant_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/') %>%
+  mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation))%>%
+  mutate(annotation = factor(annotation, levels = annotation_types))
+pheno = load_ukb_file('pheno_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/') %>% mutate(trait_type = factor(trait_type, levels = trait_types))
+
+gene %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
+gene %>% filter(keep_gene_caf) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_caf & keep_gene_coverage) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var & keep_gene_skato) %>% group_by(annotation) %>% summarise(cnt = n())
+
+var = var %>% mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation))
+var %>% group_by(annotation) %>% summarise(cnt = n())
+nrow(var %>% filter(keep_var_annt))
+var %>% filter(keep_var_annt & keep_var_af) %>% group_by(annotation) %>% summarise(cnt = n())
+
+pheno %>% group_by(trait_type) %>% summarise(cnt = n())
+pheno %>% filter(keep_pheno_skato) %>% group_by(trait_type) %>% summarise(cnt = n())
+pheno %>% filter(keep_pheno_skato & keep_pheno_unrelated) %>% group_by(trait_type) %>% summarise(cnt = n())
+
+pheno_var %>% group_by(trait_type) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_var_cnt))
+
+
 gene_sig_before %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt_skato))
 var_sig_before %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
 pheno_sig_before %>% group_by(trait_type) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_gene_cnt_skato))

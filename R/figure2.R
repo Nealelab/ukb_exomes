@@ -1,15 +1,14 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 test = 'skato'
-output = '~/skato/'
+output = '~/Desktop/final_figures/'
 
-icd_var_after = load_ukb_file('icd_min_p_var_after_SErm.txt.bgz')
-icd_gene_after  = load_ukb_file(paste0('icd_min_p_gene_after_', test, '.txt.bgz'))
+icd_var_after = load_ukb_file(paste0('icd_min_p_var_filtered_',test,'_300k.txt.bgz'), subfolder = 'analysis/')
+icd_gene_after = load_ukb_file(paste0('icd_min_p_gene_filtered_',test,'_300k.txt.bgz'), subfolder = 'analysis/')
 
 # figure 2 (A)
 figure2a = function(save_plot = F, output_path){
   icd_long = icd_var_after %>%
-    filter(AF >= 1e-4) %>%
     select(-min_p) %>%
     pivot_longer(cols = contains('_min_p'), names_to = 'icd10', values_to = 'min_p') %>%
     mutate(icd10 = str_split(icd10, '_min_p') %>% map_chr(., 1),
@@ -39,7 +38,7 @@ figure2b = function(save_plot = F, output_path){
 
 # figure 2 (C)
 figure2c = function(save_plot = F, output_path){
-  var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_after_300k_', test, '_1e-4.txt.bgz'))
+  var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
   var_gene_summary = rbind(get_var_gene_overlap_count(data = var_gene, pheno_group = 'all', normalize = T, print = F), 
                            get_var_gene_overlap_count(data = var_gene, pheno_group = 'icd_first_occurrence', normalize = T, print = F),
                            get_var_gene_overlap_count(data = var_gene, pheno_group = 'categorical', normalize = T, print = F),
