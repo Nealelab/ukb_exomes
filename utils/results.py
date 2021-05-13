@@ -11,11 +11,6 @@ TESTS = ('skato', 'skat', 'burden')
 TRAIT_TYPES = ('continuous', 'categorical', 'icd10')
 P_VALUE_FIELDS = {'skato': 'Pvalue', 'skat': 'Pvalue_SKAT', 'burden': 'Pvalue_Burden'}
 EMPIRICAL_P_THRESHOLDS = {'skato': 2.5e-8, 'burden': 6.7e-7, 'variant': 8e-9}
-sumstats_folder = f'{public_bucket}summary_statistics_analysis'
-lambda_folder = f'{sumstats_folder}/lambda_gc'
-pvalue_folder = f'{sumstats_folder}/pvalue'
-sig_folder = f'{sumstats_folder}/sig_cnt'
-beta_folder = f'{sumstats_folder}/beta'
 
 def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gene', extension: str = 'ht', tranche: str = CURRENT_TRANCHE):
     """
@@ -28,7 +23,7 @@ def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gen
     :return: Path to sumstats Table
     :rtype: str
     """
-    return f'{subdir}/{dataset}_{result_type}_{tranche}.{extension}'
+    return f'{public_bucket}/{tranche}/{subdir}/{dataset}_{result_type}_{tranche}.{extension}'
 
 def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
     """
@@ -39,7 +34,7 @@ def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
     :rtype: str
     """
     type = '_mean_coverage' if type=='coverage' else '_caf'
-    return f'{sumstats_folder}/gene{type}_{tranche}.ht'
+    return f'{public_bucket}/{tranche}/qc/gene{type}_{tranche}.ht'
 
 def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, freq_lower: float = None, freq_upper: float = None, 
                          n_var_min: int = None, coverage_min: int=None, var_filter: bool = False, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
@@ -201,7 +196,7 @@ def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: in
         'random_phenos': random_phenos,
     }
     pathargs = {
-        'subdir': lambda_folder,
+        'subdir': 'qc/lambda_gc',
         'result_type': result_type,
         'tranche': tranche,
         'extension': extension,
@@ -210,16 +205,14 @@ def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: in
     filter = '_filtered' if any(v is not None for v in [freq_lower, n_var_min, coverage_min]) else ''
     freq_breaks = [freq_lower, 0.001, 0.01, 0.1] if freq_lower is not None else [0.0001, 0.001, 0.01, 0.1]
 
-    compute_lambda_gc_ht(freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_full{filter}', **pathargs), overwrite=overwrite)
-    compute_lambda_gc_ht(by_annotation=True, freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_annt{filter}', **pathargs), overwrite=overwrite)
-    compute_lambdas_by_freq_interval_ht(freq_breaks=freq_breaks, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_freq{filter}', **pathargs), overwrite=overwrite)
-    compute_lambdas_by_freq_interval_ht(by_annotation=True, freq_breaks=freq_breaks, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_freq_annt{filter}', **pathargs), overwrite=overwrite)
+    compute_lambda_gc_ht(freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_full{filter}', **pathargs), overwrite=overwrite)
+    compute_lambda_gc_ht(by_annotation=True, freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_annt{filter}', **pathargs), overwrite=overwrite)
+    compute_lambdas_by_freq_interval_ht(freq_breaks=freq_breaks, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_freq{filter}', **pathargs), overwrite=overwrite)
 
     if result_type=='gene':
-        compute_lambda_gc_ht(by_gene=True, **kwargs).write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'{rp}lambda_by_gene{filter}', result_type='', extension=extension), overwrite=overwrite)
-    else:
-        compute_lambdas_by_expected_ac_ht(freq_lower=freq_lower, var_filter=var_filter, random_phenos=random_phenos).write(get_ukb_exomes_sumstat_path(subdir=lambda_folder, dataset=f'{rp}lambda_expectedAC{filter}', result_type='var', extension=extension), overwrite=overwrite)
-
+        compute_lambda_gc_ht(by_gene=True, **kwargs).write(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset=f'{rp}lambda_by_gene{filter}', result_type='', extension=extension), overwrite=overwrite)
+        compute_lambda_gc_ht(result_type=result_type, by_gene=True, freq_lower=freq_lower, n_var_min=n_var_min
+                            ).write(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset=f'{rp}lambda_by_gene_before_coverage{filter}', result_type='', extension=extension), overwrite=overwrite)
 
 def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
     """
@@ -262,28 +255,24 @@ def get_caf_info_ht(tranche: str = CURRENT_TRANCHE):
     return sum_af
 
 
-def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, var_min_freq: float=None, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
     """
     Generate the number of significant association for each phenotype and each gene/variant
     :param str result_type: Type of association test result, `gene` or `variant`
     :param str test_type: Type of gene-level association test result, `skato` or `burden`
-    :param Table phenos_to_keep: Subset of phenotypes to keep, keyed by ['trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier']
-    :param Table genes_to_keep: Subset of genes to keep, keyed by ['gene_id', 'gene_symbol', 'annotation']
-    :param float var_min_freq: Minimum allele frequency used for variant filtering
+    :param bool filters: Whether to use QCed set
     :param str tranche: Tranche of data to use
     :return: Hail MatrixTable with phenotype-level and gene/variant-level association count
     :rtype: MatrixTable
     """
-    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))
+
+    if filters:
+        mt = get_qc_result_mt(result_type=result_type, test_type=test_type, tranche=tranche)
+    else:
+        mt = load_final_sumstats_table(result_type=result_type, extension='mt', tranche=tranche)
     mt = mt.annotate_cols(trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
     pvalue = P_VALUE_FIELDS[test_type.lower()]
-    if phenos_to_keep is not None:
-        mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
     if result_type == 'gene':
-        af = get_caf_info_ht(tranche=tranche)
-        mt = mt.annotate_rows(CAF=af[mt.annotation, mt.gene_id]['CAF'])
-        if genes_to_keep is not None:
-            mt = mt.filter_rows(hl.is_defined(genes_to_keep.index(mt.row_key)))
         mt = mt.annotate_rows(sig_pheno_cnt=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])),
                               all_sig_pheno_cnt=hl.agg.filter(hl.is_defined(mt[pvalue]), hl.agg.count_where(mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])))
         mt = mt.annotate_rows(**{f'{trait_type2}_sig_pheno_cnt_{test_type.lower()}': mt.sig_pheno_cnt.get(trait_type2) for trait_type2 in TRAIT_TYPES})
@@ -293,8 +282,7 @@ def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', phenos_t
         mt = mt.annotate_cols(**{f'{annotation}_sig_gene_cnt_{test_type.lower()}': mt.sig_gene_cnt.get(annotation) for annotation in ANNOTATIONS})
     else:
         mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
-        if var_min_freq is not None:
-            mt = mt.filter_rows((mt.AF > var_min_freq) & hl.is_defined(mt.annotation))
+        if filters:
             mt = mt.annotate_rows(all_sig_pheno_cnt=hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])),
                                   sig_pheno_cnt=hl.agg.group_by(mt.trait_type2, hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']))),)
             mt = mt.annotate_rows(**{f'{trait_type}_sig_pheno_cnt': mt.sig_pheno_cnt.get(trait_type) for trait_type in TRAIT_TYPES for test in TESTS},)
@@ -310,31 +298,27 @@ def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', phenos_t
             mt = mt.annotate_cols(**{f'{annotation}_sig_var_cnt': mt.sig_var_cnt.get(annotation) for annotation in ANNOTATIONS},)
     return mt
 
-def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, var_min_freq: float = None, tranche: str = CURRENT_TRANCHE):
+def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
     """
     Compare the number of significant association for genes with variants within corresponding genes
     :param str test_type: Type of gene-level association test result, `skato` or `burden`
-    :param Table phenos_to_keep: Subset of phenotypes to keep, keyed by ['trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier']
-    :param Table genes_to_keep: Subset of genes to keep, keyed by ['gene_id', 'gene_symbol', 'annotation']
-    :param float var_min_freq: Minimum allele frequency used for variant filtering
+    :param bool filters: Whether to use QCed sets
     :param str tranche: Tranche of data to use
     :return: Hail MatrixTable with variant-level association count grouped by genes at phenotype-level and gene-level
     :rtype: MatrixTable
     """
-    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche))
-    mt = hl.read_matrix_table(get_results_mt_path(tranche=tranche))
-    if phenos_to_keep is not None:
-        mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
-        var = var.filter_cols(hl.is_defined(phenos_to_keep.index(var.col_key)))
-    if genes_to_keep is not None:
-        mt = mt.filter_rows(hl.is_defined(genes_to_keep.index(mt.row_key)))
+    if filters:
+        mt = get_qc_result_mt(result_type='gene', test_type=test_type, tranche=tranche)
+        var = get_qc_result_mt(result_type='variant', test_type=test_type, tranche=tranche)
+    else:
+        mt = load_final_sumstats_table(result_type='gene', extension='mt', tranche=tranche)
+        var = load_final_sumstats_table(result_type='variant', extension='mt', tranche=tranche)
     vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
     var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id)
     var = var.explode_rows(var.gene_id)
     var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
-    if var_min_freq is not None:
-        var = var.filter_rows((var.AF>var_min_freq) & hl.is_defined(var.annotation))
+    if filters:
         var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.filter(var.SE != 0, hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])))
     else:
         var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']))
@@ -429,7 +413,7 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     :rtype: Table
     """
     pheno_mt = get_ukb_pheno_mt()
-    ht = hl.read_matrix_table(get_results_mt_path(tranche)).cols()
+    ht = hl.read_table(get_results_mt_path('pheno', tranche = tranche, extension = 'ht'))
     pheno_mt = pheno_mt.filter_cols(hl.is_defined(ht[pheno_mt.col_key]))
     corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
     related = corr.filter((corr.entry ** 2 >= r_2) & (corr.i != corr.j))
@@ -443,7 +427,7 @@ def export_ht_to_txt(path_to_ht: str, output_filename: str):
     :param str output_filename: Output file name
     """
     ht = hl.read_table(path_to_ht)
-    ht.export(f'{sumstats_folder}/{output_filename}.txt.bgz')
+    ht.export(f'{public_bucket}/{tranche}/{sub_folder}/{output_filename}.txt.bgz')
 
 def get_related_pheno_cnt_list(pheno_ht: hl.Table):
     """
@@ -464,32 +448,28 @@ def get_related_pheno_cnt_list(pheno_ht: hl.Table):
         l.append(pheno_to_remove.count())
     return l
 
-def get_icd_min_p_ht(result_type: str = 'gene', test_type: str = 'skato', phenos_to_keep: hl.Table = None, genes_to_keep: hl.Table = None, var_min_freq: float=None, tranche: str = CURRENT_TRANCHE):
+def get_icd_min_p_ht(result_type: str = 'gene', test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
     """
     Generate min pvalue for each icd10 group from variant-level or gene-level test result
     :param str result_type: Type of association test result, `gene` or `variant`
     :param str test_type: Type of gene-level association test result, `skato` or `burden`
-    :param Table phenos_to_keep: Subset of phenotypes to keep, keyed by ['trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier']
-    :param Table genes_to_keep: Subset of genes to keep, keyed by ['gene_id', 'gene_symbol', 'annotation']
-    :param float var_min_freq: Minimum allele frequency used for variant filtering
+    :param bool filters: Whether to use QCed sets
     :param str tranche: Tranche of data to use
     :return: Hail Table of min p-values for each icd10 group
     :rtype: Table
     """
     mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))
     pvalue = P_VALUE_FIELDS[test_type.lower()]
-    if phenos_to_keep is not None:
-        mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
+    if filters:
+        mt = get_qc_result_mt(result_type=result_type, test_type=test_type, tranche=tranche)
+    else:
+        mt = load_final_sumstats_table(result_type='gene', extension='mt', tranche=tranche)
     icd = mt.filter_cols(mt.trait_type == 'icd_first_occurrence')
     icd = icd.annotate_cols(icd10_group = icd.description.split('first', 2)[0][5])
     ICD10_GROUPS = icd.aggregate_cols(hl.agg.collect_as_set(icd.icd10_group))
     if result_type == 'gene':
-        if genes_to_keep is not None:
-            icd = icd.filter_rows(hl.is_defined(genes_to_keep.index(icd.row_key)))
         icd = icd.annotate_rows(min_p = hl.agg.group_by(icd.icd10_group, hl.agg.min(icd[pvalue])))
     else:
-        if var_min_freq is not None:
-            icd = icd.filter_rows((icd.AF > var_min_freq) & hl.is_defined(icd.annotation))
         icd = icd.annotate_rows(min_p = hl.agg.group_by(icd.icd10_group, hl.agg.filter(icd.SE != 0, hl.agg.min(icd.Pvalue))))
     icd = icd.annotate_rows(**{f'{icd_group}_min_p': icd.min_p.get(icd_group) for icd_group in ICD10_GROUPS})
     return icd.rows()
@@ -633,8 +613,48 @@ def annotate_additional_info_mt(result_mt: hl.MatrixTable, result_type: str = 'g
     return mt
 
 def annotate_synonymous_lambda_ht(lambda_ht, test_type):
+    """
+    Annotate lambda gc of synonymous gene to the corresponding pLoF and missense gene
+    :param Table lambda_ht: original lambda gc table
+    :param str test_type: Type of gene-level association test result, `skato`, `skat` or `burden`
+    :return: Hail Table with synonymous lambda gc
+    :rtype: hl.Table
+    """
     assert test_type.lower() in TESTS, 'Invalid test type'
     lambda_ht_syn = lambda_ht.filter(lambda_ht.annotation == 'synonymous')
     lambda_ht_syn = lambda_ht_syn.key_by('gene_id', 'gene_symbol')
     lambda_ht = lambda_ht.annotate(**{f'synonymous_lambda_gc_{test_type.lower()}':lambda_ht_syn.index(lambda_ht.gene_id, lambda_ht.gene_symbol)[f'annotation_lambda_gc_{test_type.lower()}']})
     return lambda_ht
+
+def load_final_sumstats_table(result_type: str, extension: str, tranche: str = CURRENT_TRANCHE):
+    """
+    Load summary statistics table with all qc metrics
+    :param str result_type: Type of association test result, `gene` or `variant`
+    :param str extension: Extension of output file
+    :param str tranche: Tranche of data to use
+    :return: hl.Table or hl.MatrixTable with all qc metrics
+    :rtype: hl.Table or hl.MatrixTable
+    """
+    path = f'{public_bucket}/{tranche}/qc/{result_type}_qc_metrics_ukb_exomes_{tranche}.{extension}'
+    if extension == 'mt':
+        table = hl.read_matrix_table(path)
+    else:
+        table = hl.read_table(path)
+    return table
+
+def get_qc_result_mt(result_type: str = 'gene', test_type: str = 'skato', tranche: str = CURRENT_TRANCHE):
+    """
+    Apply all filters and generate Completely QCed data
+    :param str result_type: Type of association test result, `gene` or `variant`
+    :param str test_type: Type of gene-level association test result, `skato`, `skat` or `burden`
+    :param str tranche: Tranche of data to use
+    :return: Completely QCed Hail MatrixTable
+    :rtype: hl.MatrixTable
+    """
+    mt = load_final_sumstats_table(result_type=result_type, extension='mt', tranche=tranche)
+    mt = mt.filter_cols(mt[f'keep_pheno_{test_type.lower()}'] & mt.keep_pheno_unrelated)
+    if result_type == 'gene':
+        mt = mt.filter_rows(mt[f'keep_gene_{test_type.lower()}'] & mt.keep_gene_coverage & mt.keep_gene_caf & mt.keep_gene_n_var)
+    else:
+        mt = mt.filter_rows(mt.keep_var_af & mt.keep_var_annt)
+    return mt

@@ -107,7 +107,7 @@ get_mean_prop_interval = function(mean_proportion){
 
 
 get_ukb_data_url = function() {
-  return(paste0('https://storage.googleapis.com/ukbb-exome-public/summary_statistics_analysis/'))
+  return(paste0('https://storage.googleapis.com/ukbb-exome-public/300k/'))
 }
 
 
