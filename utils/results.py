@@ -23,6 +23,7 @@ def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gen
     :return: Path to sumstats Table
     :rtype: str
     """
+    result_type = result_type if result_type == '' else f'_{result_type}'
     return f'{public_bucket}/{tranche}/{subdir}/{dataset}_{result_type}_{tranche}.{extension}'
 
 def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
@@ -458,7 +459,6 @@ def get_icd_min_p_ht(result_type: str = 'gene', test_type: str = 'skato', filter
     :return: Hail Table of min p-values for each icd10 group
     :rtype: Table
     """
-    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche=tranche))
     pvalue = P_VALUE_FIELDS[test_type.lower()]
     if filters:
         mt = get_qc_result_mt(result_type=result_type, test_type=test_type, tranche=tranche)
