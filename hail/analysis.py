@@ -14,8 +14,8 @@ def main(args):
         gene_mt = hl.read_matrix_table('gs://ukbb-pharma-exome-analysis-300k/300k/results/results.mt')
         var_mt = hl.read_matrix_table('gs://ukbb-pharma-exome-analysis-300k/300k/results/variant_results.mt')
 
-        gene_mt = gene_mt.filter_cols(~(hl.set({'biogen', 'abbvie', 'pfizer'}).contains(gene_mt.modifier) | gene_mt.phenocode.endswith('_pfe')) & (gene_mt.n_cases >= 100))
-        var_mt = var_mt.filter_cols(~(hl.set({'biogen', 'abbvie', 'pfizer'}).contains(var_mt.modifier) | var_mt.phenocode.endswith('_pfe')) & (gene_mt.n_cases >= 100))
+        gene_mt = filter_phenos_mt(gene_mt)
+        var_mt = filter_phenos_mt(var_mt)
 
         gene_mt.write(get_results_mt_path('gene'), overwrite=args.overwrite)
         var_mt.write(get_results_mt_path('variant'), overwrite=args.overwrite)
@@ -52,7 +52,6 @@ def main(args):
 
         pheno_lambda = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset='lambda_by_pheno_full_filtered'))
         pheno_lambda = pheno_lambda.select(*{f'lambda_gc_{test}' for test in TESTS})
-        pheno_corr = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc', dataset='correlated', result_type='phenos'))
 
         gene_lambda = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset='lambda_by_gene_filtered', result_type=''))
         gene_lambda = gene_lambda.rename({f'all_lambda_gc_{test}': f'annotation_lambda_gc_{test}' for test in TESTS})
@@ -61,23 +60,14 @@ def main(args):
 
         gene = gene.annotate_cols(**pheno_lambda[gene.col_key])
         gene = gene.annotate_rows(**gene_lambda[gene.row_key])
-        gene = gene.annotate_cols(**{f'keep_pheno_{test}':(gene[f'lambda_gc_{test}'] > args.lambda_lower) & (gene[f'lambda_gc_{test}'] < args.lambda_upper) for test in TESTS},
-                                  keep_pheno_unrelated=hl.is_missing(pheno_corr.key_by(trait_type=pheno_corr.node.trait_type, phenocode=pheno_corr.node.phenocode,
-                                                                                       pheno_sex=pheno_corr.node.pheno_sex, coding=pheno_corr.node.coding,
-                                                                                       modifier=pheno_corr.node.modifier, )[gene.col_key]))
-        gene = gene.annotate_rows(**{f'keep_gene_{test}':(gene[f'synonymous_lambda_gc_{test}'] > args.lambda_lower) & (gene[f'synonymous_lambda_gc_{test}'] < args.lambda_upper) for test in TESTS},
-                                  keep_gene_coverage = gene.mean_coverage > args.coverage_min,
-                                  keep_gene_caf = gene.CAF > args.freq_lower,
-                                  keep_gene_n_var = gene.total_variants >= args.n_var_min)
+        gene = annotate_pheno_qc_metric_mt(gene, lambda_lower=args.lambda_lower, lambda_upper=args.lambda_upper)
+        gene = annotate_gene_qc_metric_mt(gene, lambda_lower=args.lambda_lower, lambda_upper=args.lambda_upper,
+                                          caf_lower=args.freq_lower, coverage_min=args.coverage_min, n_var_min=args.n_var_min)
 
         var = var.annotate_cols(**pheno_lambda[var.col_key])
-        var = var.annotate_cols(**{f'keep_pheno_{test}':(var[f'lambda_gc_{test}'] > args.lambda_lower) & (var[f'lambda_gc_{test}'] < args.lambda_upper) for test in TESTS},
-                                keep_pheno_unrelated=hl.is_missing(pheno_corr.key_by(trait_type=pheno_corr.node.trait_type, phenocode=pheno_corr.node.phenocode,
-                                                                                     pheno_sex=pheno_corr.node.pheno_sex, coding=pheno_corr.node.coding,
-                                                                                     modifier=pheno_corr.node.modifier)[var.col_key]))
+        var = annotate_pheno_qc_metric_mt(var, lambda_lower=args.lambda_lower, lambda_upper=args.lambda_upper)
         var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation),
-                                keep_var_af=var.AF > args.freq_lower,
-                                keep_var_annt=hl.is_defined(var.annotation))
+                                keep_var_af=var.AF > args.freq_lower, keep_var_annt=hl.is_defined(var.annotation))
 
         gene.write(get_ukb_exomes_sumstat_path(subdir='qc', dataset='gene_qc_metrics_ukb_exomes', result_type='', extension='mt'), overwrite=args.overwrite)
         gene.rows().write(get_ukb_exomes_sumstat_path(subdir='qc', dataset='gene_qc_metrics_ukb_exomes', result_type='', extension='ht'), overwrite=args.overwrite)
@@ -106,14 +96,13 @@ def main(args):
     if args.update_icd_tables:
         icd_var = get_icd_min_p_ht(result_type='variant', test_type=args.test_type, filters=args.filters)
         icd_gene = get_icd_min_p_ht(result_type='gene', test_type=args.test_type, filters=args.filters)
-        icd_var.write(get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'icd_min_p_var{filter_flag}_{args.test_type}', result_type=''))
-        icd_gene.write(get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'icd_min_p_gene{filter_flag}_{args.test_type}', result_type=''))
+        icd_var.write(get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'icd_min_p_var{filter_flag}_{args.test_type}', result_type=''), overwrite=args.overwrite)
+        icd_gene.write(get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'icd_min_p_gene{filter_flag}_{args.test_type}', result_type=''), overwrite=args.overwrite)
 
     if args.convert_to_txt_bgz:
         export_all_ht_to_txt_bgz('qc/lambda_gc')
         export_all_ht_to_txt_bgz('qc')
         export_all_ht_to_txt_bgz('analysis')
-        export_all_ht_to_txt_bgz('results')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
