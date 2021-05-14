@@ -40,8 +40,8 @@ def get_results_mt_path(result_type: str = 'gene', tranche: str = CURRENT_TRANCH
     elif biomarkers:
         result_type = f'biomarkers_{result_type}'
     else:
-        result_type = '' if result_type == 'gene' else 'variant_'
-    return f'{bucket}/{tranche}/results/{result_type}results.{extension}'
+        result_type = '' if result_type == 'gene' else ('variant_' if result_type == 'variant' else 'pheno_' )
+    return f'{public_bucket}/{tranche}/results/{result_type}results.{extension}'
 
 
 def get_loeuf_results_path(analysis_type: str, extension: str = 'mt', tranche: str = CURRENT_TRANCHE):

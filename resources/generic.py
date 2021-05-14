@@ -19,7 +19,7 @@ BUCKETS = {'300k': 'gs://ukbb-pharma-exome-analysis-300k',
            '100k': 'gs://ukbb-pharma-exome-analysis-backup',
            '200k': 'gs://ukbb-pharma-exome-analysis-backup'}
 
-public_bucket = 'gs://ukbb-exome-public/'
+public_bucket = 'gs://ukbb-exome-public'
 bucket = BUCKETS[CURRENT_TRANCHE]
 temp_bucket = 'gs://ukbb-pharma-exome-analysis-temp'
 
