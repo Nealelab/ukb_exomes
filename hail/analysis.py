@@ -39,10 +39,11 @@ def main(args):
         ht = hl.read_matrix_table(get_results_mt_path()).cols()
         pheno_mt = pheno_mt.filter_cols(hl.is_defined(ht[pheno_mt.col_key]))
         corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
+        corr.write(get_ukb_exomes_sumstat_path(subdir='qc', dataset='correlation_table', result_type='phenos'), overwrite=args.overwrite)
         corr.entry.export(get_ukb_exomes_sumstat_path(subdir='qc', dataset='pheno_correlation_before_filter', result_type='', extension='txt.bgz'))
 
         if args.get_related_pheno_cnts:
-            pheno_ht = hl.read_table(get_results_mt_path('phenotype'))
+            phenos_ht = hl.read_table(get_results_mt_path('phenotype'))
             print(get_related_pheno_cnt_list(phenos_ht))
 
     if args.update_qc_tables:
@@ -56,7 +57,7 @@ def main(args):
         gene_lambda = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset='lambda_by_gene_filtered', result_type=''))
         gene_lambda = gene_lambda.rename({f'all_lambda_gc_{test}': f'annotation_lambda_gc_{test}' for test in TESTS})
         gene_lambda = gene_lambda.drop(*{f'lambda_gc_{test}' for test in TESTS})
-        for test in TESTS: gene_lambda = annotate_gene_lambda_filter_ht(gene_lambda, test)
+        for test in TESTS: gene_lambda = annotate_synonymous_lambda_ht(gene_lambda, test)
 
         gene = gene.annotate_cols(**pheno_lambda[gene.col_key])
         gene = gene.annotate_rows(**gene_lambda[gene.row_key])
@@ -90,7 +91,7 @@ def main(args):
         pheno_var_sig.write(get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'pheno_sig_cnt{filter_flag}_{args.test_type}', result_type='var'), overwrite=args.overwrite)
 
         var_gene = compare_gene_var_sig_cnt_mt(test_type=args.test_type, filters=args.filters)
-        var_gene_after.cols().write(
+        var_gene.cols().write(
             get_ukb_exomes_sumstat_path(subdir='analysis', dataset=f'var_gene_comparison_by_pheno{filter_flag}_{args.test_type}',result_type=''), overwrite=args.overwrite)
 
     if args.update_icd_tables:

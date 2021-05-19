@@ -1,5 +1,5 @@
 from .generic import *
-from ukb_common.resources.results import *
+from ukbb_common.resources.results import *
 
 
 CURRENT_FG_RELEASE = 'r5'

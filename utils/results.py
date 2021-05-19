@@ -405,14 +405,16 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=tie_breaker)
     return pheno_to_remove
 
-def export_ht_to_txt_bgz(path_to_ht: str, output_filename: str):
+def export_ht_to_txt_bgz(path_to_ht: str, sub_dir:str, output_filename: str, tranche: str = CURRENT_TRANCHE):
     """
     Convert Hail Table to txt.bgz
     :param str path_to_ht: Path to input hail table
+    :param str sub_dir: sub directory where the Hail Tables are stored
     :param str output_filename: Output file name
+    :param str tranche: Tranche of data to use
     """
     ht = hl.read_table(path_to_ht)
-    ht.export(f'{public_bucket}/{tranche}/{sub_folder}/{output_filename}.txt.bgz')
+    ht.export(f'{public_bucket}/{tranche}/{sub_dir}/{output_filename}.txt.bgz')
 
 def export_all_ht_to_txt_bgz(sub_dir:str, tranche: str = CURRENT_TRANCHE):
     """
