@@ -6,7 +6,7 @@ import argparse
 from collections import defaultdict
 from pprint import pprint
 from gnomad.utils import slack
-from ukb_common import *
+from ukbb_common import *
 from ukb_exomes import *
 
 
