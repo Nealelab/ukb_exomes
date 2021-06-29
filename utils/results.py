@@ -398,6 +398,7 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     :rtype: Table
     """
     pheno_mt = get_ukb_pheno_mt()
+    pheno_mt = drop_pheno_fields_mt(pheno_mt)
     ht = hl.read_table(get_results_mt_path('pheno', tranche = tranche, extension = 'ht'))
     pheno_mt = pheno_mt.filter_cols(hl.is_defined(ht[pheno_mt.col_key]))
     corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
@@ -512,11 +513,17 @@ def get_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skato', cod
         pvalue = P_VALUE_FIELDS[test_type.lower()]
         ht = ht.select(pvalue, 'CAF_range')
     else:  # Variant Info
+        if random_phenos:
+            mt = mt.annotate_rows(af=hl.agg.collect_as_set(mt.AF),
+                                  annt=hl.agg.collect_as_set(mt.annotation),)
+            mt = mt.explode_rows(mt.af)
+            mt = mt.explode_rows(mt.annt)
+            mt = mt.drop('annotation', 'AF')
+            mt = mt.annotate_rows(annotation=mt.annt, AF=mt.af)
         if freq_lower is not None:
-            mt = mt.filter_rows(mt.AF > af_lower)
+            mt = mt.filter_rows(mt.AF > freq_lower)
         if freq_upper is not None:
-            mt = mt.filter_rows(mt.AF <= af_upper)
-        mt = mt.filter_rows(hl.is_defined(af.index(mt['locus'], mt['alleles'])))
+            mt = mt.filter_rows(mt.AF <= freq_upper)
         mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation),
                               AF_range=f'AF:({freq_lower}, {freq_upper}]')
         ht = mt.entries()
@@ -543,6 +550,8 @@ def get_pvalue_by_freq_interval_ht(result_type: str = 'gene', test_type: str = '
         sub_ht = get_pheno_pvalue_ht(result_type = result_type, test_type = test_type, phenos_to_keep = phenos_to_keep, freq_lower=freq_breaks[i], freq_upper=freq_breaks[i+1],
                                      n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche)
         ht = ht.union(sub_ht)
+    ht = ht.union(get_pheno_pvalue_ht(result_type = result_type, test_type = test_type, phenos_to_keep = phenos_to_keep,freq_upper=freq_breaks[0], 
+                                      n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche))
     return ht
 
 def annotate_clinvar_pathogenicity_ht():
@@ -667,37 +676,48 @@ def filter_phenos_mt(mt: hl.MatrixTable):
     :return: Hail MatrixTable with phenotypes removed
     :rtype: hl.MatrixTable
     """
-    return mt.filter_cols(~(hl.set({'biogen', 'abbvie', 'pfizer'}).contains(mt.modifier) | mt.phenocode.endswith('_pfe')) &
-                          (mt.n_cases >= 100))
+    mt = drop_pheno_fields_mt(mt)
+    mt = mt.filter_cols(~(hl.set({'biogen', 'abbvie', 'pfizer'}).contains(mt.modifier) | mt.phenocode.endswith('_pfe')) &
+                          (mt.n_cases >= 100) &
+                          ~((mt.phenocode == '20004') & ((mt.coding == '1490') | (mt.coding == '1540'))))
+    return mt
 
-def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75, lambda_upper: float = 1.5):
+def drop_pheno_fields_mt(mt: hl.MatrixTable):
+    """
+    Drop a set of fieldss from the original result Matrixtable
+    :param MatrixTable mt: Input original result Matrixtable
+    :return: Hail MatrixTable with fields removed
+    :rtype: hl.MatrixTable
+    """
+    return mt.drop('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority', 'score')
+
+
+def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75):
     """
     Annotate QC metrics to phenotype table
     :param MatrixTable mt: Input original result Matrixtable
     :param float lambda_lower: Lower bound of lambda GC
-    :param float lambda_upper: Upper bound of lambda GC
     :return: Hail MatrixTable with phenotype QC metrics
     :rtype: MatrixTable
     """
     pheno_corr = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc', dataset='correlated', result_type='phenos'))
-    mt = mt.annotate_cols(**{f'keep_pheno_{test}':(mt[f'lambda_gc_{test}'] > lambda_lower) & (mt[f'lambda_gc_{test}'] < lambda_upper) for test in TESTS},
+    mt = mt.annotate_cols(**{f'keep_pheno_{test}':(mt[f'lambda_gc_{test}'] > lambda_lower) for test in TESTS},
                            keep_pheno_unrelated=hl.is_missing(pheno_corr.key_by(**{field: pheno_corr.node[field] for field in mt.col_key})[mt.col_key]))
     return mt
 
-def annotate_gene_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75, lambda_upper: float = 1.5,
+def annotate_gene_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75,
                                caf_lower: float = 0.0001, coverage_min: int = 20, n_var_min: int = 2):
     """
     Annotate QC metrics to gene table
     :param MatrixTable mt: Input original result Matrixtable
     :param float lambda_lower: Lower bound of synonymous lambda GC
-    :param float lambda_upper: Upper bound of synonymous lambda GC
     :param float caf_lower: lower bound of cumulative allele frequency
     :param int n_var_min: Minimum number of variants
     :param int coverage_min: Minimum coverage
     :return: Hail MatrixTable with gene QC metrics
     :rtype: MatrixTable
     """
-    mt = mt.annotate_rows(**{f'keep_gene_{test}': (mt[f'synonymous_lambda_gc_{test}'] > lambda_lower) & (mt[f'synonymous_lambda_gc_{test}'] < lambda_upper) for test in TESTS},
+    mt = mt.annotate_rows(**{f'keep_gene_{test}': (mt[f'synonymous_lambda_gc_{test}'] > lambda_lower)  for test in TESTS},
                               keep_gene_coverage=mt.mean_coverage > coverage_min,
                               keep_gene_caf=mt.CAF > caf_lower,
                               keep_gene_n_var=mt.total_variants >= n_var_min)

@@ -18,10 +18,10 @@ figureS11 = function(save_plot = F, output_path){
     scale_x_log10(label = comma, limits = c(2, NA)) +
     trait_color_scale + trait_fill_scale +
     facet_grid(result_type~CAF_range, labeller = label_type) + themes +
-    theme(axis.text.x = element_text(size = 6))
+    theme(axis.text.x = element_text(size = 6, angle = 45, vjust = 0.8))
 
   if(save_plot){
-    png(output_path, height = 5, width = 9, units = 'in', res = 300)
+    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
     print(figure)
     dev.off()
   }
