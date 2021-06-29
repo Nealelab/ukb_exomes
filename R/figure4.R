@@ -42,9 +42,9 @@ figure4 = function(save_plot = F, output_path){
     group_by(annotation, gene_set_name, panel)%>%
     group_modify(~ broom::tidy(fisher.test(as.matrix(.)))) %>%
     merge(.,matched %>% group_by(annotation, gene_set_name) %>% summarise(prop = max(prop)), by = c('annotation', 'gene_set_name')) %>%
-    mutate(sig_label = if_else(p.value < 0.001, '*', ''),
+    mutate(sig_label = if_else(p.value < 0.001, '**', if_else(p.value < 0.05, '*', '')),
            annotation = factor(annotation, levels = annotation_types), ) %>%
-    filter(p.value< 0.001)
+    filter(p.value< 0.05)
 
   figure4_p1 = matched %>% filter(panel == 1) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 1))
   figure4_p2 = matched %>% filter(panel == 2) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 2))

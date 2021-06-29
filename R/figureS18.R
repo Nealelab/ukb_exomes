@@ -21,7 +21,7 @@ figureS18 = function(save_plot = F, output_path){
     mutate(sig_label = if_else(p.value < 0.001, '**', '*'),
            x  = as.numeric(group1),
            xend = as.numeric(group2),
-           y = prop + (x - xend) * 0.002,
+           y = prop + (x + xend) * 0.002,
            group1 = polyphen2_levels[x],
            group2 = polyphen2_levels[xend]) %>%
     filter(p.value<0.05)

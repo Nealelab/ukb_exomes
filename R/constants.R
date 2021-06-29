@@ -20,7 +20,7 @@ annotation_types = c('pLoF', 'missense|LC', 'synonymous')
 annotation_names = c('pLoF', 'Missense', 'Synonymous')
 result_types = c('skato', 'skat', 'burden')
 result_names = c('SKAT-O', 'SKAT', 'Burden Test')
-af_types = c('AF:(None, 0.0001]', 'AF:(None, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-05, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
+af_types = c('AF:(None, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
 af_names = c('AF:( , 0.0001]', 'AF:(, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-5, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
 caf_types = c('CAF:(None, 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, None]')
 caf_names = c('CAF:( , 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, )')
@@ -49,7 +49,7 @@ set.seed(2)
 manhattan_color = sample(col_vector[14:29], 16, replace = F)
 annotation_color_scale = scale_colour_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 annotation_fill_scale = scale_fill_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
-themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'), 
+themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'),
                axis.text = element_text(color = 'Black', size = 8), 
                axis.title = element_text(color = 'Black', size = 10, face = 'bold'), 
                legend.title = element_text(color = 'Black', size = 10, face = 'bold'), 
@@ -260,7 +260,7 @@ save_subset_matched_figure2 = function(matched_summary, matched_test, save_plot 
     annotation_color_scale + annotation_fill_scale  +
     scale_shape_manual(name = NULL, values = c(1, 16)) +
     facet_wrap(gene_set_name~., nrow = 4, labeller = label_type) + theme_classic() + themes+
-    coord_flip(ylim = c(0,0.15)) +
+    coord_flip(ylim = c(0,0.2)) +
     theme(panel.spacing = unit(1, "lines"),
         axis.text= element_text(size = 14),
         strip.background = element_blank(),
@@ -270,7 +270,7 @@ save_subset_matched_figure2 = function(matched_summary, matched_test, save_plot 
         legend.text = element_text(size = 13),
         legend.title = element_text(size = 13),
         axis.title = element_text(size = 13)) +
-    geom_text(data = matched_test, aes(x = 4-as.numeric(annotation), y = 0.15, label = sig_label), size = 6)
+    geom_text(data = matched_test, aes(x = 4-as.numeric(annotation), y = 0.18, label = sig_label), size = 6)
   if(save_plot){
     png(output_path, height = 10, width = 5, units = 'in', res = 300)
     print(plt)
@@ -469,7 +469,7 @@ format_count_by_freq_data = function(data, freq_col = 'CAF'){
 }
 
 format_random_pheno_p_data = function(data, test_type = 'SKAT-O'){
-  freq_col = if_else(test_type == 'Single-Variant Test', 'af', 'CAF_range')
+  freq_col = if_else(test_type == 'Single-Variant', 'af', 'CAF_range')
   p_col = if_else(test_type == 'Burden Test', 'Pvalue_Burden', 'Pvalue')
   data = data %>%
     filter(is.na(modifier) & phenocode %in% random_pheno_subset) %>%
