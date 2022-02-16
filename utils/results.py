@@ -1365,11 +1365,14 @@ def modify_phenos_mt(mt: hl.MatrixTable):
         & ~((mt.phenocode == "20004") & ((mt.coding == "1490") | (mt.coding == "1540")))
     )
 
-    mt = mt.key_cols_by(phenocode=hl.case()
+    mt = mt.key_cols_by(trait_type=mt.trait_type,
+                        phenocode=hl.case()
                         .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom1")
                         .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom2"))
                         .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom3"))
                         .default(mt.phenocode),
+                        pheno_sex=mt.pheno_sex,
+                        coding=mt.coding,
                         modifier=hl.if_else(hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier), 'custom',
                                             mt.modifier))
     mt = mt.annotate_cols(description=hl.case()
