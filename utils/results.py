@@ -1354,9 +1354,9 @@ def get_qc_result_mt(
 
 def modify_phenos_mt(mt: hl.MatrixTable):
     """
-    Remove a set of phenotypes from the original result Matrixtable
+    Modify and remove phenotypes from the original result Matrixtable
     :param MatrixTable mt: Input original result Matrixtable
-    :return: Hail MatrixTable with phenotypes modified and removed
+    :return: Hail MatrixTable with phenotypes removed
     :rtype: hl.MatrixTable
     """
     mt = drop_pheno_fields_mt(mt)
@@ -1367,9 +1367,13 @@ def modify_phenos_mt(mt: hl.MatrixTable):
 
     mt = mt.key_cols_by(trait_type=mt.trait_type,
                         phenocode=hl.case()
-                        .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom1")
-                        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom2"))
-                        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom3"))
+                        .when(mt.phenocode == "AbbVie_Alzheimers", "Alzheimers_custom1")
+                        .when(mt.phenocode == "Alzheimers_BI", "Alzheimers_custom2")
+                        .when(mt.phenocode == "AbbVie_IBD", "IBD_custom1")
+                        .when(mt.phenocode == "IBD_pfe", "IBD_custom2")
+                        .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom")
+                        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom"))
+                        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom"))
                         .default(mt.phenocode),
                         pheno_sex=mt.pheno_sex,
                         coding=mt.coding,
@@ -1377,7 +1381,7 @@ def modify_phenos_mt(mt: hl.MatrixTable):
                                             mt.modifier))
     mt = mt.annotate_cols(description=hl.case()
                           .when(mt.description.matches("AbbVie"), mt.description.replace("AbbVie ", ""))
-                          .when(mt.description.matches("(pfe)"), mt.description.replace("(pfe)", ""))
+                          .when(mt.description.matches("pfe"), mt.description.replace(" \(pfe\)", ""))
                           .default(mt.description))
     return mt
 
