@@ -1352,22 +1352,30 @@ def get_qc_result_mt(
     return mt
 
 
-def filter_phenos_mt(mt: hl.MatrixTable):
+def modify_phenos_mt(mt: hl.MatrixTable):
     """
     Remove a set of phenotypes from the original result Matrixtable
     :param MatrixTable mt: Input original result Matrixtable
-    :return: Hail MatrixTable with phenotypes removed
+    :return: Hail MatrixTable with phenotypes modified and removed
     :rtype: hl.MatrixTable
     """
     mt = drop_pheno_fields_mt(mt)
     mt = mt.filter_cols(
-        ~(
-            hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier)
-            | mt.phenocode.endswith("_pfe")
-        )
-        & (mt.n_cases_defined >= 100)
+        (mt.n_cases_defined >= 100)
         & ~((mt.phenocode == "20004") & ((mt.coding == "1490") | (mt.coding == "1540")))
     )
+
+    mt = mt.key_cols_by(phenocode=hl.case()
+                        .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom1")
+                        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom2"))
+                        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom3"))
+                        .default(mt.phenocode),
+                        modifier=hl.if_else(hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier), 'custom',
+                                            mt.modifier))
+    mt = mt.annotate_cols(description=hl.case()
+                          .when(mt.description.matches("AbbVie"), mt.description.replace("AbbVie ", ""))
+                          .when(mt.description.matches("(pfe)"), mt.description.replace("(pfe)", ""))
+                          .default(mt.description))
     return mt
 
 
