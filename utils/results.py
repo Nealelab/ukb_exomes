@@ -6,13 +6,20 @@ from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.vep import process_consequences
 from ..resources import *
 
-ANNOTATIONS = ('pLoF', 'missense|LC', 'synonymous')
-TESTS = ('skato', 'skat', 'burden')
-TRAIT_TYPES = ('continuous', 'categorical', 'icd10')
-P_VALUE_FIELDS = {'skato': 'Pvalue', 'skat': 'Pvalue_SKAT', 'burden': 'Pvalue_Burden'}
-EMPIRICAL_P_THRESHOLDS = {'skato': 2.5e-8, 'burden': 6.7e-7, 'variant': 8e-9}
+ANNOTATIONS = ("pLoF", "missense|LC", "synonymous", "pLoF|missense|LC")
+TESTS = ("skato", "skat", "burden")
+TRAIT_TYPES = ("continuous", "categorical", "icd10")
+P_VALUE_FIELDS = {"skato": "Pvalue", "skat": "Pvalue_SKAT", "burden": "Pvalue_Burden"}
+EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-8, "burden": 6.7e-7, "variant": 8e-9}
 
-def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gene', extension: str = 'ht', tranche: str = CURRENT_TRANCHE):
+
+def get_ukb_exomes_sumstat_path(
+    subdir: str,
+    dataset: str,
+    result_type: str = "gene",
+    extension: str = "ht",
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Get UKB downstream sumstats Table path
     :param str subdir: Path to sub directory
@@ -23,10 +30,11 @@ def get_ukb_exomes_sumstat_path(subdir:str, dataset:str, result_type: str = 'gen
     :return: Path to sumstats Table
     :rtype: str
     """
-    result_type = result_type if result_type == '' else f'_{result_type}'
-    return f'{public_bucket}/{tranche}/{subdir}/{dataset}{result_type}_{tranche}.{extension}'
+    result_type = result_type if result_type == "" else f"_{result_type}"
+    return f"{public_bucket}/{tranche}/{subdir}/{dataset}{result_type}_{tranche}.{extension}"
 
-def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
+
+def get_util_info_path(type: str, tranche: str = CURRENT_TRANCHE):
     """
     Get cumulative allele frequency or mean coverage Table path
     :param str type: Type of table to use, `coverage` or `other`
@@ -34,11 +42,22 @@ def get_util_info_path(type:str, tranche: str = CURRENT_TRANCHE):
     :return: Path to information Table
     :rtype: str
     """
-    type = '_mean_coverage' if type=='coverage' else '_caf'
-    return f'{public_bucket}/{tranche}/qc/gene{type}_{tranche}.ht'
+    type = "_mean_coverage" if type == "coverage" else "_caf"
+    return f"{public_bucket}/{tranche}/qc/gene{type}_{tranche}.ht"
 
-def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False, by_gene: bool = False, freq_lower: float = None, freq_upper: float = None, 
-                         n_var_min: int = None, coverage_min: int=None, var_filter: bool = False, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def compute_lambda_gc_ht(
+    result_type: str = "gene",
+    by_annotation: bool = False,
+    by_gene: bool = False,
+    freq_lower: float = None,
+    freq_upper: float = None,
+    n_var_min: int = None,
+    coverage_min: int = None,
+    var_filter: bool = False,
+    random_phenos: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Compute Lambda GC for variant-level test or gene-level tests (SKAT-O, SKAT, and Burden Test) under specified condition
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -54,9 +73,13 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
     :return: Hail table with lambda GC
     :rtype: Table
     """
-    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche, random_phenos=random_phenos))
-    if result_type == 'gene':  # Gene Info
-        mt = annotate_additional_info_mt(result_mt=mt, result_type=result_type, tranche=tranche)
+    mt = hl.read_matrix_table(
+        get_results_mt_path(result_type, tranche, random_phenos=random_phenos)
+    )
+    if result_type == "gene":  # Gene Info
+        mt = annotate_additional_info_mt(
+            result_mt=mt, result_type=result_type, tranche=tranche
+        )
         if freq_lower is not None:
             mt = mt.filter_rows(mt.CAF > freq_lower)
         if freq_upper is not None:
@@ -66,62 +89,184 @@ def compute_lambda_gc_ht(result_type: str = 'gene', by_annotation: bool = False,
         if coverage_min is not None:
             mt = mt.filter_rows(mt.mean_coverage > coverage_min)
         if by_annotation:
-            mt = mt.select_cols('n_cases', 
-                                lambda_gc_skato=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
-                                lambda_gc_skat=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)), 
-                                lambda_gc_burden=hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), 
-                                CAF_range=f'CAF:({freq_lower}, {freq_upper}]')
-            mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_{test}': mt[f'lambda_gc_{test}'].get(annotation) for annotation in ANNOTATIONS for test in TESTS})
+            mt = mt.select_cols(
+                "n_cases",
+                lambda_gc_skato=hl.agg.group_by(
+                    mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)
+                ),
+                lambda_gc_skat=hl.agg.group_by(
+                    mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)
+                ),
+                lambda_gc_burden=hl.agg.group_by(
+                    mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)
+                ),
+                CAF_range=f"CAF:({freq_lower}, {freq_upper}]",
+            )
+            mt = mt.annotate_cols(
+                **{
+                    f"{annotation}_lambda_gc_{test}": mt[f"lambda_gc_{test}"].get(
+                        annotation
+                    )
+                    for annotation in ANNOTATIONS
+                    for test in TESTS
+                }
+            )
             ht = mt.cols()
-            ht = ht.annotate(trait_type2=hl.if_else(ht.trait_type == 'icd_first_occurrence', 'icd10', ht.trait_type), )
+            ht = ht.annotate(
+                trait_type2=hl.if_else(
+                    ht.trait_type == "icd_first_occurrence", "icd10", ht.trait_type
+                ),
+            )
         elif by_gene:
-            mt = mt.annotate_cols(trait_type2=hl.if_else(mt.trait_type == 'continuous', mt.trait_type, 'categorical'))
-            mt = mt.select_rows('CAF', 'mean_coverage',
-                                lambda_gc_skato=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
-                                lambda_gc_skat=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)), 
-                                lambda_gc_burden=hl.agg.group_by(mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), )
-            mt = mt.annotate_rows(**{f'{trait_type}_lambda_gc_{test}': mt[f'lambda_gc_{test}'].get(trait_type) for trait_type in TRAIT_TYPES for test in TESTS},
-                                  all_lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
-                                  all_lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)), 
-                                  all_lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), )
+            mt = mt.annotate_cols(
+                trait_type2=hl.if_else(
+                    mt.trait_type == "continuous", mt.trait_type, "categorical"
+                )
+            )
+            mt = mt.select_rows(
+                "CAF",
+                "mean_coverage",
+                lambda_gc_skato=hl.agg.group_by(
+                    mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)
+                ),
+                lambda_gc_skat=hl.agg.group_by(
+                    mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)
+                ),
+                lambda_gc_burden=hl.agg.group_by(
+                    mt.trait_type2, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)
+                ),
+            )
+            mt = mt.annotate_rows(
+                **{
+                    f"{trait_type}_lambda_gc_{test}": mt[f"lambda_gc_{test}"].get(
+                        trait_type
+                    )
+                    for trait_type in TRAIT_TYPES
+                    for test in TESTS
+                },
+                all_lambda_gc_skato=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                ),
+                all_lambda_gc_skat=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue_SKAT),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT),
+                ),
+                all_lambda_gc_burden=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue_Burden),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden),
+                ),
+            )
             ht = mt.rows()
         else:
-            mt = mt.select_cols('n_cases', 
-                                lambda_gc_skato=hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)), 
-                                lambda_gc_skat=hl.agg.filter(hl.is_defined(mt.Pvalue_SKAT), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT)), 
-                                lambda_gc_burden=hl.agg.filter(hl.is_defined(mt.Pvalue_Burden), hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)), 
-                                CAF_range=f'CAF:({freq_lower}, {freq_upper}]')
+            mt = mt.select_cols(
+                "n_cases",
+                lambda_gc_skato=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                ),
+                lambda_gc_skat=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue_SKAT),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue_SKAT),
+                ),
+                lambda_gc_burden=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue_Burden),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden),
+                ),
+                CAF_range=f"CAF:({freq_lower}, {freq_upper}]",
+            )
             ht = mt.cols()
-            ht = ht.annotate(trait_type2=hl.if_else(ht.trait_type == 'icd_first_occurrence', 'icd10', ht.trait_type), )
+            ht = ht.annotate(
+                trait_type2=hl.if_else(
+                    ht.trait_type == "icd_first_occurrence", "icd10", ht.trait_type
+                ),
+            )
     else:  # Variant Info
         if freq_lower is not None:
             mt = mt.filter_rows(mt.AF > freq_lower)
         if freq_upper is not None:
             mt = mt.filter_rows(mt.AF <= freq_upper)
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
+        mt = mt.annotate_rows(
+            annotation=hl.if_else(
+                hl.literal({"missense", "LC"}).contains(mt.annotation),
+                "missense|LC",
+                mt.annotation,
+            )
+        )
         if var_filter:
             mt = mt.filter_rows(hl.is_defined(mt.annotation))
             if by_annotation:
-                lambda_gc = hl.agg.group_by(mt.annotation, hl.agg.filter(mt.SE!=0, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)))
-                mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({freq_lower}, {freq_upper}]')
-                mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_variant': mt.lambda_gc.get(annotation) for annotation in ANNOTATIONS}, )
+                lambda_gc = hl.agg.group_by(
+                    mt.annotation,
+                    hl.agg.filter(
+                        mt.SE != 0, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)
+                    ),
+                )
+                mt = mt.select_cols(
+                    "n_cases",
+                    lambda_gc=lambda_gc,
+                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                )
+                mt = mt.annotate_cols(
+                    **{
+                        f"{annotation}_lambda_gc_variant": mt.lambda_gc.get(annotation)
+                        for annotation in ANNOTATIONS
+                    },
+                )
             else:
-                lambda_gc = hl.agg.filter(mt.SE!=0, hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
-                mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({freq_lower}, {freq_upper}]')
+                lambda_gc = hl.agg.filter(
+                    mt.SE != 0, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)
+                )
+                mt = mt.select_cols(
+                    "n_cases",
+                    lambda_gc=lambda_gc,
+                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                )
         else:
             if by_annotation:
-                lambda_gc = hl.agg.group_by(mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
-                mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({freq_lower}, {freq_upper}]')
-                mt = mt.annotate_cols(**{f'{annotation}_lambda_gc_variant': mt.lambda_gc[annotation] for annotation in ANNOTATIONS}, )
+                lambda_gc = hl.agg.group_by(
+                    mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue)
+                )
+                mt = mt.select_cols(
+                    "n_cases",
+                    lambda_gc=lambda_gc,
+                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                )
+                mt = mt.annotate_cols(
+                    **{
+                        f"{annotation}_lambda_gc_variant": mt.lambda_gc[annotation]
+                        for annotation in ANNOTATIONS
+                    },
+                )
             else:
-                lambda_gc = hl.agg.filter(hl.is_defined(mt.Pvalue), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))
-                mt = mt.select_cols('n_cases', lambda_gc=lambda_gc, AF_range=f'AF:({freq_lower}, {freq_upper}]')
+                lambda_gc = hl.agg.filter(
+                    hl.is_defined(mt.Pvalue),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                )
+                mt = mt.select_cols(
+                    "n_cases",
+                    lambda_gc=lambda_gc,
+                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                )
         ht = mt.cols()
-        ht = ht.annotate(trait_type2=hl.if_else(ht.trait_type == 'icd_first_occurrence', 'icd10', ht.trait_type), )
+        ht = ht.annotate(
+            trait_type2=hl.if_else(
+                ht.trait_type == "icd_first_occurrence", "icd10", ht.trait_type
+            ),
+        )
     return ht
 
-def compute_lambdas_by_freq_interval_ht(result_type='gene', by_annotation: bool = False, freq_breaks: list=[0.0001, 0.001, 0.01, 0.1], n_var_min: int = None, coverage_min: int=None,
-                                        var_filter: bool = False, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def compute_lambdas_by_freq_interval_ht(
+    result_type="gene",
+    by_annotation: bool = False,
+    freq_breaks: list = [0.0001, 0.001, 0.01, 0.1],
+    n_var_min: int = None,
+    coverage_min: int = None,
+    var_filter: bool = False,
+    random_phenos: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Compute Lambda GC for variant-level test or gene-level tests (SKAT-O, SKAT, and Burden Test) by frequency intervals
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -135,14 +280,50 @@ def compute_lambdas_by_freq_interval_ht(result_type='gene', by_annotation: bool 
     :return: Hail table with lambda GC by frequency intervals
     :rtype: Table
     """
-    ht = compute_lambda_gc_ht(result_type=result_type, by_annotation=by_annotation, freq_upper=freq_breaks[0], n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche)
-    for i in list(range(0, len(freq_breaks)-1)):
-        sub_ht = compute_lambda_gc_ht(result_type=result_type, by_annotation=by_annotation, freq_lower=freq_breaks[i], freq_upper=freq_breaks[i+1], n_var_min=n_var_min, coverage_min=coverage_min, var_filter=var_filter, random_phenos=random_phenos, tranche=tranche)
+    ht = compute_lambda_gc_ht(
+        result_type=result_type,
+        by_annotation=by_annotation,
+        freq_upper=freq_breaks[0],
+        n_var_min=n_var_min,
+        coverage_min=coverage_min,
+        random_phenos=random_phenos,
+        tranche=tranche,
+    )
+    for i in list(range(0, len(freq_breaks) - 1)):
+        sub_ht = compute_lambda_gc_ht(
+            result_type=result_type,
+            by_annotation=by_annotation,
+            freq_lower=freq_breaks[i],
+            freq_upper=freq_breaks[i + 1],
+            n_var_min=n_var_min,
+            coverage_min=coverage_min,
+            var_filter=var_filter,
+            random_phenos=random_phenos,
+            tranche=tranche,
+        )
         ht = ht.union(sub_ht)
-    ht = ht.union(compute_lambda_gc_ht(result_type=result_type, by_annotation=by_annotation, freq_lower=freq_breaks[-1], n_var_min=n_var_min, coverage_min=coverage_min, var_filter=var_filter, random_phenos=random_phenos, tranche=tranche))
+    ht = ht.union(
+        compute_lambda_gc_ht(
+            result_type=result_type,
+            by_annotation=by_annotation,
+            freq_lower=freq_breaks[-1],
+            n_var_min=n_var_min,
+            coverage_min=coverage_min,
+            var_filter=var_filter,
+            random_phenos=random_phenos,
+            tranche=tranche,
+        )
+    )
     return ht
 
-def compute_lambdas_by_expected_ac_ht(freq_lower: float=None, ac_breaks: list=[1, 10, 100, 1000, 10000, 100000], var_filter: bool = False, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def compute_lambdas_by_expected_ac_ht(
+    freq_lower: float = None,
+    ac_breaks: list = [1, 10, 100, 1000, 10000, 100000],
+    var_filter: bool = False,
+    random_phenos: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Compute Lambda GC for variant-level test by expected allele count interval
     :param float freq_lower: Lower bound of allele frequency used for variant filtering
@@ -153,30 +334,91 @@ def compute_lambdas_by_expected_ac_ht(freq_lower: float=None, ac_breaks: list=[1
     :return: Hail table with lambda GC by expected allele count intervals
     :rtype: Table
     """
-    mt = hl.read_matrix_table(get_results_mt_path('variant', random_phenos=random_phenos))
+    mt = hl.read_matrix_table(
+        get_results_mt_path("variant", random_phenos=random_phenos)
+    )
     if freq_lower is not None:
         mt = mt.filter_rows(mt.AF > freq_lower)
     if random_phenos:
-        mt = mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0]).drop('AF').rename({'AF2': 'AF'})
+        mt = (
+            mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0])
+            .drop("AF")
+            .rename({"AF2": "AF"})
+        )
     if var_filter:
         mt = mt.filter_rows(hl.is_defined(mt.annotation))
         mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
-        mt = mt.annotate_cols(lambda_gc0 = hl.agg.filter((mt.expected_AC <= ac_breaks[0]) & (mt.SE != 0), hl.methods.statgen._lambda_gc_agg(mt.Pvalue)))
-        for i in list(range(0, len(ac_breaks)-1)):
-            mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[i]}': hl.agg.filter((mt.expected_AC > ac_breaks[i]) & (mt.expected_AC <= ac_breaks[i+1]) & (mt.SE != 0), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
-        mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter((mt.expected_AC > ac_breaks[-1])& (mt.SE != 0), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))},
-                              trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
+        mt = mt.annotate_cols(
+            lambda_gc0=hl.agg.filter(
+                (mt.expected_AC <= ac_breaks[0]) & (mt.SE != 0),
+                hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+            )
+        )
+        for i in list(range(0, len(ac_breaks) - 1)):
+            mt = mt.annotate_cols(
+                **{
+                    f"lambda_gc{ac_breaks[i]}": hl.agg.filter(
+                        (mt.expected_AC > ac_breaks[i])
+                        & (mt.expected_AC <= ac_breaks[i + 1])
+                        & (mt.SE != 0),
+                        hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                    )
+                }
+            )
+        mt = mt.annotate_cols(
+            **{
+                f"lambda_gc{ac_breaks[-1]}": hl.agg.filter(
+                    (mt.expected_AC > ac_breaks[-1]) & (mt.SE != 0),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                )
+            },
+            trait_type2=hl.if_else(
+                mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
+            ),
+        )
     else:
         mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
-        mt = mt.annotate_cols(lambda_gc0 = hl.agg.filter(mt.expected_AC <= ac_breaks[0], hl.methods.statgen._lambda_gc_agg(mt.Pvalue)))
-        for i in list(range(0, len(ac_breaks)-1)):
-            mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[i]}': hl.agg.filter((mt.expected_AC > ac_breaks[i]) & (mt.expected_AC <= ac_breaks[i+1]), hl.methods.statgen._lambda_gc_agg(mt.Pvalue))})
-        mt = mt.annotate_cols(**{f'lambda_gc{ac_breaks[-1]}' : hl.agg.filter(mt.expected_AC > ac_breaks[-1], hl.methods.statgen._lambda_gc_agg(mt.Pvalue))},
-                              trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
+        mt = mt.annotate_cols(
+            lambda_gc0=hl.agg.filter(
+                mt.expected_AC <= ac_breaks[0],
+                hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+            )
+        )
+        for i in list(range(0, len(ac_breaks) - 1)):
+            mt = mt.annotate_cols(
+                **{
+                    f"lambda_gc{ac_breaks[i]}": hl.agg.filter(
+                        (mt.expected_AC > ac_breaks[i])
+                        & (mt.expected_AC <= ac_breaks[i + 1]),
+                        hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                    )
+                }
+            )
+        mt = mt.annotate_cols(
+            **{
+                f"lambda_gc{ac_breaks[-1]}": hl.agg.filter(
+                    mt.expected_AC > ac_breaks[-1],
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                )
+            },
+            trait_type2=hl.if_else(
+                mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
+            ),
+        )
     return mt.cols()
 
-def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: int = None, coverage_min: int = None, var_filter: bool = False,
-                     random_phenos: bool = False, extension: str = 'ht', overwrite: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def write_lambda_hts(
+    result_type="gene",
+    freq_lower: float = None,
+    n_var_min: int = None,
+    coverage_min: int = None,
+    var_filter: bool = False,
+    random_phenos: bool = False,
+    extension: str = "ht",
+    overwrite: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Write lambda GC tables for variant-level test or gene-level tests (SKAT-O, SKAT, and Burden Test) under different condition
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -190,32 +432,76 @@ def write_lambda_hts(result_type='gene', freq_lower: float = None, n_var_min: in
     :param str tranche: Tranche of data to use
     """
     kwargs = {
-        'result_type': result_type,
-        'n_var_min': n_var_min,
-        'coverage_min': coverage_min,
-        'var_filter': var_filter,
-        'random_phenos': random_phenos,
+        "result_type": result_type,
+        "n_var_min": n_var_min,
+        "coverage_min": coverage_min,
+        "var_filter": var_filter,
+        "random_phenos": random_phenos,
     }
     pathargs = {
-        'subdir': 'qc/lambda_gc',
-        'result_type': result_type,
-        'tranche': tranche,
-        'extension': extension,
+        "subdir": "qc/lambda_gc",
+        "result_type": result_type,
+        "tranche": tranche,
+        "extension": extension,
     }
-    rp = 'rp_' if random_phenos else ''
-    filter = '_filtered' if any(v is not None for v in [freq_lower, n_var_min, coverage_min]) else ''
-    freq_breaks = [freq_lower, 0.001, 0.01, 0.1] if freq_lower is not None else [0.0001, 0.001, 0.01, 0.1]
+    rp = "rp_" if random_phenos else ""
+    filter = (
+        "_filtered"
+        if any(v is not None for v in [freq_lower, n_var_min, coverage_min])
+        else ""
+    )
+    freq_breaks = (
+        [freq_lower, 0.001, 0.01, 0.1]
+        if freq_lower is not None
+        else [0.0001, 0.001, 0.01, 0.1]
+    )
 
-    compute_lambda_gc_ht(freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_full{filter}', **pathargs), overwrite=overwrite)
-    compute_lambda_gc_ht(by_annotation=True, freq_lower=freq_lower, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_annt{filter}', **pathargs), overwrite=overwrite)
-    compute_lambdas_by_freq_interval_ht(freq_breaks=freq_breaks, **kwargs).write(get_ukb_exomes_sumstat_path(dataset=f'{rp}lambda_by_pheno_freq{filter}', **pathargs), overwrite=overwrite)
+    compute_lambda_gc_ht(freq_lower=freq_lower, **kwargs).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_full{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
+    compute_lambda_gc_ht(by_annotation=True, freq_lower=freq_lower, **kwargs).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_annt{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
+    compute_lambdas_by_freq_interval_ht(freq_breaks=freq_breaks, **kwargs).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_freq{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
 
-    if result_type=='gene':
-        compute_lambda_gc_ht(by_gene=True, **kwargs).write(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset=f'{rp}lambda_by_gene{filter}', result_type='', extension=extension), overwrite=overwrite)
-        compute_lambda_gc_ht(result_type=result_type, by_gene=True, freq_lower=freq_lower, n_var_min=n_var_min
-                            ).write(get_ukb_exomes_sumstat_path(subdir='qc/lambda_gc', dataset=f'{rp}lambda_by_gene_before_coverage{filter}', result_type='', extension=extension), overwrite=overwrite)
+    if result_type == "gene":
+        compute_lambda_gc_ht(by_gene=True, **kwargs).write(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc/lambda_gc",
+                dataset=f"{rp}lambda_by_gene{filter}",
+                result_type="",
+                extension=extension,
+            ),
+            overwrite=overwrite,
+        )
+        compute_lambda_gc_ht(
+            result_type=result_type,
+            by_gene=True,
+            freq_lower=freq_lower,
+            n_var_min=n_var_min,
+        ).write(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc/lambda_gc",
+                dataset=f"{rp}lambda_by_gene_before_coverage{filter}",
+                result_type="",
+                extension=extension,
+            ),
+            overwrite=overwrite,
+        )
 
-def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None):
+
+def compute_ukb_pheno_moments_ht(pheno_sex="both_sexes", phenocode: list = None):
     """
     Generate first 4 moments Table for selected phenotypes
     :param str pheno_sex: Which sex group to use
@@ -226,12 +512,15 @@ def compute_ukb_pheno_moments_ht(pheno_sex='both_sexes', phenocode: list = None)
     pheno = get_ukb_pheno_mt()
     if phenocode is not None:
         pheno = pheno.filter_cols(hl.literal(phenocode).contains(pheno.phenocode))
-    pheno = pheno.annotate_cols(mean=hl.agg.mean(pheno[pheno_sex]), 
-                                std=hl.agg.stats(pheno[pheno_sex]).stdev)
-    pheno = pheno.annotate_cols(variance=pheno.std ** 2, 
-                                skewness=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 3) / (pheno.std ** 3), 
-                                kurtosis=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 4) / (pheno.std ** 4))
-    pheno = pheno.select_cols('mean', 'variance', 'skewness', 'kurtosis').cols()
+    pheno = pheno.annotate_cols(
+        mean=hl.agg.mean(pheno[pheno_sex]), std=hl.agg.stats(pheno[pheno_sex]).stdev
+    )
+    pheno = pheno.annotate_cols(
+        variance=pheno.std ** 2,
+        skewness=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 3) / (pheno.std ** 3),
+        kurtosis=hl.agg.mean((pheno[pheno_sex] - pheno.mean) ** 4) / (pheno.std ** 4),
+    )
+    pheno = pheno.select_cols("mean", "variance", "skewness", "kurtosis").cols()
     return pheno
 
 
@@ -242,21 +531,40 @@ def get_caf_info_ht(tranche: str = CURRENT_TRANCHE):
     :return: Cumulative allele frequency Hail Table
     :rtype: Table
     """
-    vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+    vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
     vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
     annotation = annotation_case_builder(vep.vep.worst_csq_by_gene_canonical)
-    vep = vep.annotate(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(annotation), 'missense|LC', annotation))
-    vep = vep.filter(hl.is_defined(vep.annotation) & (vep.annotation != 'non-coding'))
+    vep = vep.annotate(
+        annotation=hl.if_else(
+            hl.literal({"missense", "LC"}).contains(annotation),
+            "missense|LC",
+            annotation,
+        )
+    )
+    vep = vep.filter(hl.is_defined(vep.annotation) & (vep.annotation != "non-coding"))
     vep = vep.select(vep.vep.worst_csq_by_gene_canonical.gene_id, vep.annotation)
 
     freq = hl.read_table(release_ht_path(*TRANCHE_DATA[tranche]))
     var_af = vep.annotate(AF=freq[vep.key].freq[0].AF)
-    sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(CAF=hl.agg.sum(var_af.AF))
+    sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(
+        CAF=hl.agg.sum(var_af.AF)
+    )
+    if tranche == '500k':
+        sub_af = sum_af.filter(hl.literal({"missense|LC", "pLoF"}).contains(sum_af.annotation))
+        sub_af = sub_af.key_by()
+        sub_af = sub_af.annotate(annotation = 'pLoF|missense|LC')
+        sub_af = sub_af.group_by('annotation', 'gene_id').aggregate(CAF=hl.agg.sum(sub_af.CAF))
+        sum_af = sub_af.union(sum_af)
     return sum_af
 
 
-def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
+def get_sig_cnt_mt(
+    result_type: str = "gene",
+    test_type: str = "skato",
+    filters: bool = True,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Generate the number of significant association for each phenotype and each gene/variant
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -268,38 +576,155 @@ def get_sig_cnt_mt(result_type: str = 'gene', test_type: str = 'skato', filters:
     """
 
     if filters:
-        mt = get_qc_result_mt(result_type=result_type, test_type=test_type, tranche=tranche)
+        mt = get_qc_result_mt(
+            result_type=result_type, test_type=test_type, tranche=tranche
+        )
     else:
-        mt = load_final_sumstats_table(result_type=result_type, extension='mt', tranche=tranche)
-    mt = mt.annotate_cols(trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
+        mt = load_final_sumstats_table(
+            result_type=result_type, extension="mt", tranche=tranche
+        )
+    mt = mt.annotate_cols(
+        trait_type2=hl.if_else(
+            mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
+        )
+    )
     pvalue = P_VALUE_FIELDS[test_type.lower()]
-    if result_type == 'gene':
-        mt = mt.annotate_rows(sig_pheno_cnt=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])),
-                              all_sig_pheno_cnt=hl.agg.filter(hl.is_defined(mt[pvalue]), hl.agg.count_where(mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])))
-        mt = mt.annotate_rows(**{f'{trait_type2}_sig_pheno_cnt_{test_type.lower()}': mt.sig_pheno_cnt.get(trait_type2) for trait_type2 in TRAIT_TYPES})
+    if result_type == "gene":
+        mt = mt.annotate_rows(
+            sig_pheno_cnt=hl.agg.group_by(
+                mt.trait_type2,
+                hl.agg.count_where(
+                    mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()]
+                ),
+            ),
+            all_sig_pheno_cnt=hl.agg.filter(
+                hl.is_defined(mt[pvalue]),
+                hl.agg.count_where(
+                    mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()]
+                ),
+            ),
+        )
+        mt = mt.annotate_rows(
+            **{
+                f"{trait_type2}_sig_pheno_cnt_{test_type.lower()}": mt.sig_pheno_cnt.get(
+                    trait_type2
+                )
+                for trait_type2 in TRAIT_TYPES
+            }
+        )
 
-        mt = mt.annotate_cols(sig_gene_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])),
-                              all_sig_gene_cnt=hl.agg.filter(hl.is_defined(mt[pvalue]), hl.agg.count_where(mt[pvalue]< EMPIRICAL_P_THRESHOLDS[test_type.lower()])))
-        mt = mt.annotate_cols(**{f'{annotation}_sig_gene_cnt_{test_type.lower()}': mt.sig_gene_cnt.get(annotation) for annotation in ANNOTATIONS})
+        mt = mt.annotate_cols(
+            sig_gene_cnt=hl.agg.group_by(
+                mt.annotation,
+                hl.agg.count_where(
+                    mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()]
+                ),
+            ),
+            all_sig_gene_cnt=hl.agg.filter(
+                hl.is_defined(mt[pvalue]),
+                hl.agg.count_where(
+                    mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()]
+                ),
+            ),
+        )
+        mt = mt.annotate_cols(
+            **{
+                f"{annotation}_sig_gene_cnt_{test_type.lower()}": mt.sig_gene_cnt.get(
+                    annotation
+                )
+                for annotation in ANNOTATIONS
+            }
+        )
     else:
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation))
+        mt = mt.annotate_rows(
+            annotation=hl.if_else(
+                hl.literal({"missense", "LC"}).contains(mt.annotation),
+                "missense|LC",
+                mt.annotation,
+            )
+        )
         if filters:
-            mt = mt.annotate_rows(all_sig_pheno_cnt=hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])),
-                                  sig_pheno_cnt=hl.agg.group_by(mt.trait_type2, hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']))),)
-            mt = mt.annotate_rows(**{f'{trait_type}_sig_pheno_cnt': mt.sig_pheno_cnt.get(trait_type) for trait_type in TRAIT_TYPES for test in TESTS},)
-            mt = mt.annotate_cols(all_sig_var_cnt=hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])),
-                                  sig_var_cnt=hl.agg.group_by(mt.annotation, hl.agg.filter(mt.SE != 0, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']))))
-            mt = mt.annotate_cols(**{f'{annotation}_sig_var_cnt': mt.sig_var_cnt.get(annotation) for annotation in ANNOTATIONS},)
+            mt = mt.annotate_rows(
+                all_sig_pheno_cnt=hl.agg.filter(
+                    mt.SE != 0,
+                    hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]),
+                ),
+                sig_pheno_cnt=hl.agg.group_by(
+                    mt.trait_type2,
+                    hl.agg.filter(
+                        mt.SE != 0,
+                        hl.agg.count_where(
+                            mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]
+                        ),
+                    ),
+                ),
+            )
+            mt = mt.annotate_rows(
+                **{
+                    f"{trait_type}_sig_pheno_cnt": mt.sig_pheno_cnt.get(trait_type)
+                    for trait_type in TRAIT_TYPES
+                    for test in TESTS
+                },
+            )
+            mt = mt.annotate_cols(
+                all_sig_var_cnt=hl.agg.filter(
+                    mt.SE != 0,
+                    hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]),
+                ),
+                sig_var_cnt=hl.agg.group_by(
+                    mt.annotation,
+                    hl.agg.filter(
+                        mt.SE != 0,
+                        hl.agg.count_where(
+                            mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]
+                        ),
+                    ),
+                ),
+            )
+            mt = mt.annotate_cols(
+                **{
+                    f"{annotation}_sig_var_cnt": mt.sig_var_cnt.get(annotation)
+                    for annotation in ANNOTATIONS
+                },
+            )
         else:
-            mt = mt.annotate_rows(all_sig_pheno_cnt=hl.agg.sum(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']),
-                                  sig_pheno_cnt=hl.agg.group_by(mt.trait_type2, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])),)
-            mt = mt.annotate_rows(**{f'{trait_type}_sig_pheno_cnt': mt.sig_pheno_cnt.get(trait_type) for trait_type in TRAIT_TYPES for test in TESTS},)
-            mt = mt.annotate_cols(all_sig_var_cnt=hl.agg.sum(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']),
-                                  sig_var_cnt=hl.agg.group_by(mt.annotation, hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])))
-            mt = mt.annotate_cols(**{f'{annotation}_sig_var_cnt': mt.sig_var_cnt.get(annotation) for annotation in ANNOTATIONS},)
+            mt = mt.annotate_rows(
+                all_sig_pheno_cnt=hl.agg.sum(
+                    mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]
+                ),
+                sig_pheno_cnt=hl.agg.group_by(
+                    mt.trait_type2,
+                    hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]),
+                ),
+            )
+            mt = mt.annotate_rows(
+                **{
+                    f"{trait_type}_sig_pheno_cnt": mt.sig_pheno_cnt.get(trait_type)
+                    for trait_type in TRAIT_TYPES
+                    for test in TESTS
+                },
+            )
+            mt = mt.annotate_cols(
+                all_sig_var_cnt=hl.agg.sum(
+                    mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]
+                ),
+                sig_var_cnt=hl.agg.group_by(
+                    mt.annotation,
+                    hl.agg.count_where(mt.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]),
+                ),
+            )
+            mt = mt.annotate_cols(
+                **{
+                    f"{annotation}_sig_var_cnt": mt.sig_var_cnt.get(annotation)
+                    for annotation in ANNOTATIONS
+                },
+            )
     return mt
 
-def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
+
+def compare_gene_var_sig_cnt_mt(
+    test_type: str = "skato", filters: bool = True, tranche: str = CURRENT_TRANCHE
+):
     """
     Compare the number of significant association for genes with variants within corresponding genes
     :param str test_type: Type of gene-level association test result, `skato` or `burden`
@@ -309,41 +734,115 @@ def compare_gene_var_sig_cnt_mt(test_type: str = 'skato', filters: bool = True, 
     :rtype: MatrixTable
     """
     if filters:
-        mt = get_qc_result_mt(result_type='gene', test_type=test_type, tranche=tranche)
-        var = get_qc_result_mt(result_type='variant', test_type=test_type, tranche=tranche)
+        mt = get_qc_result_mt(result_type="gene", test_type=test_type, tranche=tranche)
+        var = get_qc_result_mt(
+            result_type="variant", test_type=test_type, tranche=tranche
+        )
     else:
-        mt = load_final_sumstats_table(result_type='gene', extension='mt', tranche=tranche)
-        var = load_final_sumstats_table(result_type='variant', extension='mt', tranche=tranche)
-    vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+        mt = load_final_sumstats_table(
+            result_type="gene", extension="mt", tranche=tranche
+        )
+        var = load_final_sumstats_table(
+            result_type="variant", extension="mt", tranche=tranche
+        )
+    vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
-    var = var.annotate_rows(gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id)
+    var = var.annotate_rows(
+        gene_id=vep[var.row_key].vep.worst_csq_by_gene_canonical.gene_id
+    )
     var = var.explode_rows(var.gene_id)
-    var = var.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
+    var = var.annotate_rows(
+        annotation=hl.if_else(
+            hl.literal({"missense", "LC"}).contains(var.annotation),
+            "missense|LC",
+            var.annotation,
+        ),
+    )
     if filters:
-        var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.filter(var.SE != 0, hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS['variant'])))
+        var = var.group_rows_by("gene_id", "gene", "annotation").aggregate(
+            var_cnt=hl.agg.filter(
+                var.SE != 0,
+                hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"]),
+            )
+        )
     else:
-        var = var.group_rows_by('gene_id', 'gene', 'annotation').aggregate(var_cnt=hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS['variant']))
+        var = var.group_rows_by("gene_id", "gene", "annotation").aggregate(
+            var_cnt=hl.agg.count_where(var.Pvalue < EMPIRICAL_P_THRESHOLDS["variant"])
+        )
     pvalue = P_VALUE_FIELDS[test_type.lower()]
-    mt = mt.annotate_entries(var_cnt=var[mt.row_key, mt.col_key]['var_cnt'])
-    mt = mt.annotate_cols(pheno_gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
-                                                                  hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])),
-                          pheno_var_sig_cnt=hl.agg.count_where((hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)) &
-                                                             (~(hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])))),
-                          pheno_gene_sig_cnt=hl.agg.count_where((hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])) &
-                                                              (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))),
-                          pheno_none_sig_cnt=hl.agg.count_where(~((hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])) |
-                                                                (hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))),
-                          trait_type2=hl.if_else(mt.trait_type == 'icd_first_occurrence', 'icd10', mt.trait_type))
+    mt = mt.annotate_entries(var_cnt=var[mt.row_key, mt.col_key]["var_cnt"])
+    mt = mt.annotate_cols(
+        pheno_gene_var_sig_cnt=hl.agg.count_where(
+            hl.is_defined(mt.var_cnt)
+            & (mt.var_cnt > 0)
+            & hl.is_defined(mt[pvalue])
+            & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+        ),
+        pheno_var_sig_cnt=hl.agg.count_where(
+            (hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0))
+            & (
+                ~(
+                    hl.is_defined(mt[pvalue])
+                    & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+                )
+            )
+        ),
+        pheno_gene_sig_cnt=hl.agg.count_where(
+            (
+                hl.is_defined(mt[pvalue])
+                & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+            )
+            & (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))
+        ),
+        pheno_none_sig_cnt=hl.agg.count_where(
+            ~(
+                (
+                    hl.is_defined(mt[pvalue])
+                    & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+                )
+                | (hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0))
+            )
+        ),
+        trait_type2=hl.if_else(
+            mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
+        ),
+    )
 
-    mt = mt.annotate_rows(gene_var_sig_cnt=hl.agg.count_where(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0) &
-                                                                  hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])),
-                          var_sig_cnt=hl.agg.count_where((hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)) &
-                                                             (~(hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])))),
-                          gene_sig_cnt=hl.agg.count_where((hl.is_defined(mt[pvalue]) & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])) &
-                                                              (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))),
-                          none_sig_cnt=hl.agg.count_where(((hl.is_missing(mt[pvalue]) | (mt[pvalue] >= EMPIRICAL_P_THRESHOLDS[test_type.lower()])) &
-                                                           (hl.is_missing(mt.var_cnt) | (mt.var_cnt == 0)))))
+    mt = mt.annotate_rows(
+        gene_var_sig_cnt=hl.agg.count_where(
+            hl.is_defined(mt.var_cnt)
+            & (mt.var_cnt > 0)
+            & hl.is_defined(mt[pvalue])
+            & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+        ),
+        var_sig_cnt=hl.agg.count_where(
+            (hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0))
+            & (
+                ~(
+                    hl.is_defined(mt[pvalue])
+                    & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+                )
+            )
+        ),
+        gene_sig_cnt=hl.agg.count_where(
+            (
+                hl.is_defined(mt[pvalue])
+                & (mt[pvalue] < EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+            )
+            & (~(hl.is_defined(mt.var_cnt) & (mt.var_cnt > 0)))
+        ),
+        none_sig_cnt=hl.agg.count_where(
+            (
+                (
+                    hl.is_missing(mt[pvalue])
+                    | (mt[pvalue] >= EMPIRICAL_P_THRESHOLDS[test_type.lower()])
+                )
+                & (hl.is_missing(mt.var_cnt) | (mt.var_cnt == 0))
+            )
+        ),
+    )
     return mt
+
 
 def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     """
@@ -352,27 +851,48 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
     :return: Mean coverage Hail Table
     :rtype: Table
     """
-    int_auto = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='autosomes'))
-    int_sex = hl.read_table(interval_qc_path(data_source='broad', freeze=7, chrom='sex_chr'))
-    int_sex = int_sex.select(target_mean_dp=int_sex.target_mean_dp['XX'], 
-                            target_pct_gt_10x=int_sex.target_pct_gt_10x['XX'], 
-                            target_pct_gt_20x=int_sex.target_pct_gt_20x['XX'], 
-                            pct_samples_10x=int_sex.pct_samples_10x['XX'], 
-                            pct_samples_20x=int_sex.pct_samples_20x['XX'])
+    int_auto = hl.read_table(
+        interval_qc_path(data_source="broad", freeze=7, chrom="autosomes")
+    )
+    int_sex = hl.read_table(
+        interval_qc_path(data_source="broad", freeze=7, chrom="sex_chr")
+    )
+    int_sex = int_sex.select(
+        target_mean_dp=int_sex.target_mean_dp["XX"],
+        target_pct_gt_10x=int_sex.target_pct_gt_10x["XX"],
+        target_pct_gt_20x=int_sex.target_pct_gt_20x["XX"],
+        pct_samples_10x=int_sex.pct_samples_10x["XX"],
+        pct_samples_20x=int_sex.pct_samples_20x["XX"],
+    )
     int_full = int_auto.union(int_sex)
 
-    var = hl.read_matrix_table(get_results_mt_path('variant', tranche=tranche)).rows()
-    vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+    var = hl.read_matrix_table(get_results_mt_path("variant", tranche=tranche)).rows()
+    vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
     var = var.annotate(csq=vep[var.key].vep.worst_csq_by_gene_canonical)
     var = var.explode(var.csq)
-    var = var.annotate(gene_id = var.csq.gene_id, 
-                       gene_symbol = var.csq.gene_symbol, 
-                       annotation = annotation_case_builder(var.csq), 
-                       coverage=int_full[var.locus].target_mean_dp)
-    var = var.annotate(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(var.annotation), 'missense|LC', var.annotation), )
-    mean_coverage = var.group_by('gene_id', 'gene_symbol', 'annotation').aggregate(mean_coverage=hl.agg.mean(var.coverage))
+    var = var.annotate(
+        gene_id=var.csq.gene_id,
+        gene_symbol=var.csq.gene_symbol,
+        annotation=annotation_case_builder(var.csq),
+        coverage=int_full[var.locus].target_mean_dp,
+    )
+    var = var.annotate(
+        annotation=hl.if_else(
+            hl.literal({"missense", "LC"}).contains(var.annotation),
+            "missense|LC",
+            var.annotation,
+        ),
+    )
+    if tranche == '500k':
+        sub = var.filter(hl.literal({"missense|LC", "pLoF"}).contains(var.annotation))
+        sub = sub.annotate(annotation = 'pLoF|missense|LC')
+        var = sub.union(var)
+    mean_coverage = var.group_by("gene_id", "gene_symbol", "annotation").aggregate(
+        mean_coverage=hl.agg.mean(var.coverage)
+    )
     return mean_coverage
+
 
 def more_cases_tie_breaker(l, r):
     """
@@ -382,13 +902,18 @@ def more_cases_tie_breaker(l, r):
     :return: integer indicating which phenotype is preferred
     :rtype: int
     """
-    return (hl.case()\
-        .when(l.n_cases_both_sexes > r.n_cases_both_sexes, -1)\
-        .when(l.n_cases_both_sexes == r.n_cases_both_sexes, 0)\
-        .when(l.n_cases_both_sexes < r.n_cases_both_sexes, 1)\
-        .or_missing())
+    return (
+        hl.case()
+        .when(l.n_cases_both_sexes > r.n_cases_both_sexes, -1)
+        .when(l.n_cases_both_sexes == r.n_cases_both_sexes, 0)
+        .when(l.n_cases_both_sexes < r.n_cases_both_sexes, 1)
+        .or_missing()
+    )
 
-def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CURRENT_TRANCHE):
+
+def get_corr_phenos_ht(
+    r_2: float = None, tie_breaker=None, tranche: str = CURRENT_TRANCHE
+):
     """
     Generate a subset of related phenotypes to remove
     :param float r_2: Correlation-square cutoff point, phenotype with correlation above which are included to be removed
@@ -399,14 +924,19 @@ def get_corr_phenos_ht(r_2: float = None, tie_breaker = None, tranche: str = CUR
     """
     pheno_mt = get_ukb_pheno_mt()
     pheno_mt = drop_pheno_fields_mt(pheno_mt)
-    ht = hl.read_table(get_results_mt_path('pheno', tranche = tranche, extension = 'ht'))
+    ht = hl.read_table(get_results_mt_path("pheno", tranche=tranche, extension="ht"))
     pheno_mt = pheno_mt.filter_cols(hl.is_defined(ht[pheno_mt.col_key]))
     corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
     related = corr.filter((corr.entry ** 2 >= r_2) & (corr.i != corr.j))
-    pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=tie_breaker)
+    pheno_to_remove = hl.maximal_independent_set(
+        related.i_data, related.j_data, keep=False, tie_breaker=tie_breaker
+    )
     return pheno_to_remove
 
-def export_ht_to_txt_bgz(path_to_ht: str, sub_dir:str, output_filename: str, tranche: str = CURRENT_TRANCHE):
+
+def export_ht_to_txt_bgz(
+    path_to_ht: str, sub_dir: str, output_filename: str, tranche: str = CURRENT_TRANCHE
+):
     """
     Convert Hail Table to txt.bgz
     :param str path_to_ht: Path to input hail table
@@ -415,20 +945,24 @@ def export_ht_to_txt_bgz(path_to_ht: str, sub_dir:str, output_filename: str, tra
     :param str tranche: Tranche of data to use
     """
     ht = hl.read_table(path_to_ht)
-    ht.export(f'{public_bucket}/{tranche}/{sub_dir}/{output_filename}.txt.bgz')
+    ht.export(f"{public_bucket}/{tranche}/{sub_dir}/{output_filename}.txt.bgz")
 
-def export_all_ht_to_txt_bgz(sub_dir:str, tranche: str = CURRENT_TRANCHE):
+
+def export_all_ht_to_txt_bgz(sub_dir: str, tranche: str = CURRENT_TRANCHE):
     """
     Convert all Hail Tables to txt.bgz
     :param str sub_dir: sub directory where the Hail Tables are stored
     :param str tranche: Tranche of data to use
     """
-    files = subprocess.check_output(f"gsutil ls {public_bucket}/{tranche}/{sub_dir}/", shell=True)
-    files = files.decode("utf-8").split('\n')
+    files = subprocess.check_output(
+        f"gsutil ls {public_bucket}/{tranche}/{sub_dir}/", shell=True
+    )
+    files = files.decode("utf-8").split("\n")
     import re
-    ht_list = [file for file in files if file.endswith('.ht/')]
+
+    ht_list = [file for file in files if file.endswith(".ht/")]
     for ht in ht_list:
-        name = re.split('/|\\.', ht)[-3]
+        name = re.split("/|\\.", ht)[-3]
         export_ht_to_txt_bgz(ht, sub_dir, name)
 
 
@@ -444,14 +978,26 @@ def get_related_pheno_cnt_list(pheno_ht: hl.Table):
     pheno_mt = pheno_mt.filter_cols(hl.is_defined(pheno_ht[pheno_mt.col_key]))
     corr = make_pairwise_ht(pheno_mt, pheno_field=pheno_mt.both_sexes, correlation=True)
     import numpy as np
+
     for k in np.arange(0.1, 1.0, 0.1):
         print(k)
         related = corr.filter((corr.entry ** 2 >= k) & (corr.i != corr.j))
-        pheno_to_remove = hl.maximal_independent_set(related.i_data, related.j_data, keep=False, tie_breaker=more_cases_tie_breaker)
+        pheno_to_remove = hl.maximal_independent_set(
+            related.i_data,
+            related.j_data,
+            keep=False,
+            tie_breaker=more_cases_tie_breaker,
+        )
         l.append(pheno_to_remove.count())
     return l
 
-def get_icd_min_p_ht(result_type: str = 'gene', test_type: str = 'skato', filters: bool = True, tranche: str = CURRENT_TRANCHE):
+
+def get_icd_min_p_ht(
+    result_type: str = "gene",
+    test_type: str = "skato",
+    filters: bool = True,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Generate min pvalue for each icd10 group from variant-level or gene-level test result
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -463,21 +1009,44 @@ def get_icd_min_p_ht(result_type: str = 'gene', test_type: str = 'skato', filter
     """
     pvalue = P_VALUE_FIELDS[test_type.lower()]
     if filters:
-        mt = get_qc_result_mt(result_type=result_type, test_type=test_type, tranche=tranche)
+        mt = get_qc_result_mt(
+            result_type=result_type, test_type=test_type, tranche=tranche
+        )
     else:
-        mt = load_final_sumstats_table(result_type='gene', extension='mt', tranche=tranche)
-    icd = mt.filter_cols(mt.trait_type == 'icd_first_occurrence')
-    icd = icd.annotate_cols(icd10_group = icd.description.split('first', 2)[0][5])
+        mt = load_final_sumstats_table(
+            result_type="gene", extension="mt", tranche=tranche
+        )
+    icd = mt.filter_cols(mt.trait_type == "icd_first_occurrence")
+    icd = icd.annotate_cols(icd10_group=icd.description.split("first", 2)[0][5])
     ICD10_GROUPS = icd.aggregate_cols(hl.agg.collect_as_set(icd.icd10_group))
-    if result_type == 'gene':
-        icd = icd.annotate_rows(min_p = hl.agg.group_by(icd.icd10_group, hl.agg.min(icd[pvalue])))
+    if result_type == "gene":
+        icd = icd.annotate_rows(
+            min_p=hl.agg.group_by(icd.icd10_group, hl.agg.min(icd[pvalue]))
+        )
     else:
-        icd = icd.annotate_rows(min_p = hl.agg.group_by(icd.icd10_group, hl.agg.filter(icd.SE != 0, hl.agg.min(icd.Pvalue))))
-    icd = icd.annotate_rows(**{f'{icd_group}_min_p': icd.min_p.get(icd_group) for icd_group in ICD10_GROUPS})
+        icd = icd.annotate_rows(
+            min_p=hl.agg.group_by(
+                icd.icd10_group, hl.agg.filter(icd.SE != 0, hl.agg.min(icd.Pvalue))
+            )
+        )
+    icd = icd.annotate_rows(
+        **{f"{icd_group}_min_p": icd.min_p.get(icd_group) for icd_group in ICD10_GROUPS}
+    )
     return icd.rows()
 
-def get_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skato', coding: list = None, phenos_to_keep: hl.Table = None, freq_lower: float = None, freq_upper: float = None,
-                        n_var_min: int = 2, coverage_min: int = 20, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def get_pheno_pvalue_ht(
+    result_type: str = "gene",
+    test_type: str = "skato",
+    coding: list = None,
+    phenos_to_keep: hl.Table = None,
+    freq_lower: float = None,
+    freq_upper: float = None,
+    n_var_min: int = 2,
+    coverage_min: int = 20,
+    random_phenos: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Generate Pvalue table from variant-level or gene-level test result
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -493,13 +1062,17 @@ def get_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skato', cod
     :return: Hail Table of p-value
     :rtype: Table
     """
-    mt = hl.read_matrix_table(get_results_mt_path(result_type, tranche, random_phenos=random_phenos))
+    mt = hl.read_matrix_table(
+        get_results_mt_path(result_type, tranche, random_phenos=random_phenos)
+    )
     if coding is not None:
         mt = mt.filter_cols(hl.literal(coding).contains(mt.coding))
     if phenos_to_keep is not None:
         mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
-    if result_type == 'gene':  # Gene Info
-        mt = annotate_additional_info_mt(result_mt=mt, result_type=result_type, tranche=tranche)
+    if result_type == "gene":  # Gene Info
+        mt = annotate_additional_info_mt(
+            result_mt=mt, result_type=result_type, tranche=tranche
+        )
         if freq_lower is not None:
             mt = mt.filter_rows(mt.CAF > freq_lower)
         if freq_upper is not None:
@@ -508,30 +1081,47 @@ def get_pheno_pvalue_ht(result_type: str = 'gene', test_type: str = 'skato', cod
             mt = mt.filter_rows(mt.total_variants >= n_var_min)
         if coverage_min is not None:
             mt = mt.filter_rows(mt.mean_coverage > coverage_min)
-        mt = mt.annotate_rows(CAF_range=f'CAF:({freq_lower}, {freq_upper}]')
+        mt = mt.annotate_rows(CAF_range=f"CAF:({freq_lower}, {freq_upper}]")
         ht = mt.entries()
         pvalue = P_VALUE_FIELDS[test_type.lower()]
-        ht = ht.select(pvalue, 'CAF_range')
+        ht = ht.select(pvalue, "CAF_range")
     else:  # Variant Info
         if random_phenos:
-            mt = mt.annotate_rows(af=hl.agg.collect_as_set(mt.AF),
-                                  annt=hl.agg.collect_as_set(mt.annotation),)
+            mt = mt.annotate_rows(
+                af=hl.agg.collect_as_set(mt.AF),
+                annt=hl.agg.collect_as_set(mt.annotation),
+            )
             mt = mt.explode_rows(mt.af)
             mt = mt.explode_rows(mt.annt)
-            mt = mt.drop('annotation', 'AF')
+            mt = mt.drop("annotation", "AF")
             mt = mt.annotate_rows(annotation=mt.annt, AF=mt.af)
         if freq_lower is not None:
             mt = mt.filter_rows(mt.AF > freq_lower)
         if freq_upper is not None:
             mt = mt.filter_rows(mt.AF <= freq_upper)
-        mt = mt.annotate_rows(annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(mt.annotation), 'missense|LC', mt.annotation),
-                              AF_range=f'AF:({freq_lower}, {freq_upper}]')
+        mt = mt.annotate_rows(
+            annotation=hl.if_else(
+                hl.literal({"missense", "LC"}).contains(mt.annotation),
+                "missense|LC",
+                mt.annotation,
+            ),
+            AF_range=f"AF:({freq_lower}, {freq_upper}]",
+        )
         ht = mt.entries()
-        ht = ht.select('Pvalue', 'AF_range')
+        ht = ht.select("Pvalue", "AF_range")
     return ht
 
-def get_pvalue_by_freq_interval_ht(result_type: str = 'gene', test_type: str = 'skato', freq_breaks: list = [0.0001, 0.001, 0.01, 0.1], phenos_to_keep: hl.Table = None,
-                                   n_var_min: int = None, coverage_min: int = None, random_phenos: bool = False, tranche: str = CURRENT_TRANCHE):
+
+def get_pvalue_by_freq_interval_ht(
+    result_type: str = "gene",
+    test_type: str = "skato",
+    freq_breaks: list = [0.0001, 0.001, 0.01, 0.1],
+    phenos_to_keep: hl.Table = None,
+    n_var_min: int = None,
+    coverage_min: int = None,
+    random_phenos: bool = False,
+    tranche: str = CURRENT_TRANCHE,
+):
     """
     Generate Pvalue Table from variant-level or gene-level test result by frequency interval
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -545,14 +1135,43 @@ def get_pvalue_by_freq_interval_ht(result_type: str = 'gene', test_type: str = '
     :return: Hail Table of p-value by frequency interval
     :rtype: Table
     """
-    ht = get_pheno_pvalue_ht(result_type = result_type, test_type = test_type, phenos_to_keep = phenos_to_keep,freq_lower=freq_breaks[-1], n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche)
-    for i in list(range(0, len(freq_breaks)-1)):
-        sub_ht = get_pheno_pvalue_ht(result_type = result_type, test_type = test_type, phenos_to_keep = phenos_to_keep, freq_lower=freq_breaks[i], freq_upper=freq_breaks[i+1],
-                                     n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche)
+    ht = get_pheno_pvalue_ht(
+        result_type=result_type,
+        test_type=test_type,
+        phenos_to_keep=phenos_to_keep,
+        freq_lower=freq_breaks[-1],
+        n_var_min=n_var_min,
+        coverage_min=coverage_min,
+        random_phenos=random_phenos,
+        tranche=tranche,
+    )
+    for i in list(range(0, len(freq_breaks) - 1)):
+        sub_ht = get_pheno_pvalue_ht(
+            result_type=result_type,
+            test_type=test_type,
+            phenos_to_keep=phenos_to_keep,
+            freq_lower=freq_breaks[i],
+            freq_upper=freq_breaks[i + 1],
+            n_var_min=n_var_min,
+            coverage_min=coverage_min,
+            random_phenos=random_phenos,
+            tranche=tranche,
+        )
         ht = ht.union(sub_ht)
-    ht = ht.union(get_pheno_pvalue_ht(result_type = result_type, test_type = test_type, phenos_to_keep = phenos_to_keep,freq_upper=freq_breaks[0], 
-                                      n_var_min=n_var_min, coverage_min=coverage_min, random_phenos=random_phenos, tranche=tranche))
+    ht = ht.union(
+        get_pheno_pvalue_ht(
+            result_type=result_type,
+            test_type=test_type,
+            phenos_to_keep=phenos_to_keep,
+            freq_upper=freq_breaks[0],
+            n_var_min=n_var_min,
+            coverage_min=coverage_min,
+            random_phenos=random_phenos,
+            tranche=tranche,
+        )
+    )
     return ht
+
 
 def annotate_clinvar_pathogenicity_ht():
     """
@@ -561,14 +1180,32 @@ def annotate_clinvar_pathogenicity_ht():
     :rtype: Table
     """
     clinvar_ht = clinvar.ht()
-    clinvar_ht = clinvar_ht.filter(~clinvar_ht.info.CLNREVSTAT[0].contains('no_assertion'))  # remove clinvar zero star variants
+    clinvar_ht = clinvar_ht.filter(
+        ~clinvar_ht.info.CLNREVSTAT[0].contains("no_assertion")
+    )  # remove clinvar zero star variants
     clinvar_ht = clinvar_ht.explode(clinvar_ht.info.CLNSIG)
-    clinvar_ht = clinvar_ht.annotate(pathogenicity=hl.case() \
-                                     .when(hl.literal({'Pathogenic', 'Likely_pathogenic', 'Pathogenic/Likely_pathogenic'}).contains(clinvar_ht.info.CLNSIG), 'P/LP') \
-                                     .when(hl.literal({'Uncertain_significance'}).contains(clinvar_ht.info.CLNSIG), 'VUS') \
-                                     .when(hl.literal({'Benign', 'Likely_benign', 'Benign/Likely_benign'}).contains(clinvar_ht.info.CLNSIG), 'B/LB') \
-                                     .or_missing())
+    clinvar_ht = clinvar_ht.annotate(
+        pathogenicity=hl.case()
+        .when(
+            hl.literal(
+                {"Pathogenic", "Likely_pathogenic", "Pathogenic/Likely_pathogenic"}
+            ).contains(clinvar_ht.info.CLNSIG),
+            "P/LP",
+        )
+        .when(
+            hl.literal({"Uncertain_significance"}).contains(clinvar_ht.info.CLNSIG),
+            "VUS",
+        )
+        .when(
+            hl.literal({"Benign", "Likely_benign", "Benign/Likely_benign"}).contains(
+                clinvar_ht.info.CLNSIG
+            ),
+            "B/LB",
+        )
+        .or_missing()
+    )
     return clinvar_ht
+
 
 def add_liftover_rg37_to_rg38_ht(ht: hl.Table):
     """
@@ -577,16 +1214,21 @@ def add_liftover_rg37_to_rg38_ht(ht: hl.Table):
     :return: Hail Table
     :rtype: hl.Table
     """
-    rg37 = hl.get_reference('GRCh37')
-    rg38 = hl.get_reference('GRCh38')
+    rg37 = hl.get_reference("GRCh37")
+    rg38 = hl.get_reference("GRCh38")
     if not rg37.has_liftover("GRCh38"):
-        rg37.add_liftover('gs://hail-common/references/grch37_to_grch38.over.chain.gz', rg38)
-    ht = ht.annotate(new_locus=hl.liftover(ht.locus, 'GRCh38'))
+        rg37.add_liftover(
+            "gs://hail-common/references/grch37_to_grch38.over.chain.gz", rg38
+        )
+    ht = ht.annotate(new_locus=hl.liftover(ht.locus, "GRCh38"))
     ht = ht.filter(hl.is_defined(ht.new_locus))
     ht = ht.key_by(locus=ht.new_locus, alleles=ht.alleles)
     return ht
 
-def annotate_additional_info_mt(result_mt: hl.MatrixTable, result_type: str = 'gene', tranche: str = CURRENT_TRANCHE):
+
+def annotate_additional_info_mt(
+    result_mt: hl.MatrixTable, result_type: str = "gene", tranche: str = CURRENT_TRANCHE
+):
     """
     Attach additional information to the original gene/variant-level sumstats MatrixTable
     :param MatrixTable result_mt: sumstats MatrixTable to annotate informtaion to
@@ -595,32 +1237,53 @@ def annotate_additional_info_mt(result_mt: hl.MatrixTable, result_type: str = 'g
     :return: Hail MatrixTable with updated information
     :rtype: hl.MatrixTable
     """
-    if result_type == 'gene':
-        af = hl.read_table(get_util_info_path('caf', tranche))
-        coverage_ht = hl.read_table(get_util_info_path('coverage', tranche))
-        mt = result_mt.annotate_rows(CAF=af[result_mt.annotation, result_mt.gene_id]['CAF'],
-                                     mean_coverage=coverage_ht[result_mt.row_key].mean_coverage)
+    if result_type == "gene":
+        af = hl.read_table(get_util_info_path("caf", tranche))
+        coverage_ht = hl.read_table(get_util_info_path("coverage", tranche))
+        mt = result_mt.annotate_rows(
+            CAF=af[result_mt.annotation, result_mt.gene_id]["CAF"],
+            mean_coverage=coverage_ht[result_mt.row_key].mean_coverage,
+        )
     else:
         clinvar_ht = annotate_clinvar_pathogenicity_ht()
 
-        ht = hl.read_table('gs://gcp-public-data--gnomad/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021520.ht')
+        ht = hl.read_table(
+            "gs://gcp-public-data--gnomad/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021520.ht"
+        )
         ht = ht.explode(ht.tx_annotation)
         ht = add_liftover_rg37_to_rg38_ht(ht)
 
-        vep = hl.read_table(var_annotations_ht_path('vep', *TRANCHE_DATA[tranche]))
+        vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
         vep = process_consequences(vep)
         vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-        vep = vep.annotate(tx_annotation_csq=ht[vep.key].tx_annotation.csq,
-                           mean_proportion=ht[vep.key].tx_annotation.mean_proportion)
-        mt = result_mt.annotate_rows(pathogenicity=clinvar_ht[result_mt.locus, result_mt.alleles]['pathogenicity'],
-                                     annotation=hl.if_else(hl.literal({'missense', 'LC'}).contains(result_mt.annotation),'missense|LC', result_mt.annotation),
-                                     polyphen2=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.polyphen_prediction,
-                                     amino_acids=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.amino_acids,
-                                     lof=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.lof,
-                                     most_severe_consequence=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.most_severe_consequence,
-                                     tx_annotation_csq=vep[result_mt.row_key].tx_annotation_csq,
-                                     mean_proportion_expressed=vep[result_mt.row_key].mean_proportion)
+        vep = vep.annotate(
+            tx_annotation_csq=ht[vep.key].tx_annotation.csq,
+            mean_proportion=ht[vep.key].tx_annotation.mean_proportion,
+        )
+        mt = result_mt.annotate_rows(
+            pathogenicity=clinvar_ht[result_mt.locus, result_mt.alleles][
+                "pathogenicity"
+            ],
+            annotation=hl.if_else(
+                hl.literal({"missense", "LC"}).contains(result_mt.annotation),
+                "missense|LC",
+                result_mt.annotation,
+            ),
+            polyphen2=vep[
+                result_mt.row_key
+            ].vep.worst_csq_by_gene_canonical.polyphen_prediction,
+            amino_acids=vep[
+                result_mt.row_key
+            ].vep.worst_csq_by_gene_canonical.amino_acids,
+            lof=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.lof,
+            most_severe_consequence=vep[
+                result_mt.row_key
+            ].vep.worst_csq_by_gene_canonical.most_severe_consequence,
+            tx_annotation_csq=vep[result_mt.row_key].tx_annotation_csq,
+            mean_proportion_expressed=vep[result_mt.row_key].mean_proportion,
+        )
     return mt
+
 
 def annotate_synonymous_lambda_ht(lambda_ht, test_type):
     """
@@ -630,13 +1293,22 @@ def annotate_synonymous_lambda_ht(lambda_ht, test_type):
     :return: Hail Table with synonymous lambda gc
     :rtype: hl.Table
     """
-    assert test_type.lower() in TESTS, 'Invalid test type'
-    lambda_ht_syn = lambda_ht.filter(lambda_ht.annotation == 'synonymous')
-    lambda_ht_syn = lambda_ht_syn.key_by('gene_id', 'gene_symbol')
-    lambda_ht = lambda_ht.annotate(**{f'synonymous_lambda_gc_{test_type.lower()}':lambda_ht_syn.index(lambda_ht.gene_id, lambda_ht.gene_symbol)[f'annotation_lambda_gc_{test_type.lower()}']})
+    assert test_type.lower() in TESTS, "Invalid test type"
+    lambda_ht_syn = lambda_ht.filter(lambda_ht.annotation == "synonymous")
+    lambda_ht_syn = lambda_ht_syn.key_by("gene_id", "gene_symbol")
+    lambda_ht = lambda_ht.annotate(
+        **{
+            f"synonymous_lambda_gc_{test_type.lower()}": lambda_ht_syn.index(
+                lambda_ht.gene_id, lambda_ht.gene_symbol
+            )[f"annotation_lambda_gc_{test_type.lower()}"]
+        }
+    )
     return lambda_ht
 
-def load_final_sumstats_table(result_type: str, extension: str, tranche: str = CURRENT_TRANCHE):
+
+def load_final_sumstats_table(
+    result_type: str, extension: str, tranche: str = CURRENT_TRANCHE
+):
     """
     Load summary statistics table with all qc metrics
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -645,14 +1317,17 @@ def load_final_sumstats_table(result_type: str, extension: str, tranche: str = C
     :return: hl.Table or hl.MatrixTable with all qc metrics
     :rtype: hl.Table or hl.MatrixTable
     """
-    path = f'{public_bucket}/{tranche}/qc/{result_type}_qc_metrics_ukb_exomes_{tranche}.{extension}'
-    if extension == 'mt':
+    path = f"{public_bucket}/{tranche}/qc/{result_type}_qc_metrics_ukb_exomes_{tranche}.{extension}"
+    if extension == "mt":
         table = hl.read_matrix_table(path)
     else:
         table = hl.read_table(path)
     return table
 
-def get_qc_result_mt(result_type: str = 'gene', test_type: str = 'skato', tranche: str = CURRENT_TRANCHE):
+
+def get_qc_result_mt(
+    result_type: str = "gene", test_type: str = "skato", tranche: str = CURRENT_TRANCHE
+):
     """
     Apply all filters and generate Completely QCed data
     :param str result_type: Type of association test result, `gene` or `variant`
@@ -661,26 +1336,55 @@ def get_qc_result_mt(result_type: str = 'gene', test_type: str = 'skato', tranch
     :return: Completely QCed Hail MatrixTable
     :rtype: hl.MatrixTable
     """
-    mt = load_final_sumstats_table(result_type=result_type, extension='mt', tranche=tranche)
-    mt = mt.filter_cols(mt[f'keep_pheno_{test_type.lower()}'] & mt.keep_pheno_unrelated)
-    if result_type == 'gene':
-        mt = mt.filter_rows(mt[f'keep_gene_{test_type.lower()}'] & mt.keep_gene_coverage & mt.keep_gene_caf & mt.keep_gene_n_var)
+    mt = load_final_sumstats_table(
+        result_type=result_type, extension="mt", tranche=tranche
+    )
+    mt = mt.filter_cols(mt[f"keep_pheno_{test_type.lower()}"] & mt.keep_pheno_unrelated)
+    if result_type == "gene":
+        mt = mt.filter_rows(
+            mt[f"keep_gene_{test_type.lower()}"]
+            & mt.keep_gene_coverage
+            & mt.keep_gene_caf
+            & mt.keep_gene_n_var
+        )
     else:
         mt = mt.filter_rows(mt.keep_var_af & mt.keep_var_annt)
     return mt
 
-def filter_phenos_mt(mt: hl.MatrixTable):
+
+def modify_phenos_mt(mt: hl.MatrixTable):
     """
-    Remove a set of phenotypes from the original result Matrixtable
+    Modify and remove phenotypes from the original result Matrixtable
     :param MatrixTable mt: Input original result Matrixtable
     :return: Hail MatrixTable with phenotypes removed
     :rtype: hl.MatrixTable
     """
     mt = drop_pheno_fields_mt(mt)
-    mt = mt.filter_cols(~(hl.set({'biogen', 'abbvie', 'pfizer'}).contains(mt.modifier) | mt.phenocode.endswith('_pfe')) &
-                          (mt.n_cases >= 100) &
-                          ~((mt.phenocode == '20004') & ((mt.coding == '1490') | (mt.coding == '1540'))))
+    mt = mt.filter_cols(
+        (mt.n_cases_defined >= 100)
+        & ~((mt.phenocode == "20004") & ((mt.coding == "1490") | (mt.coding == "1540")))
+    )
+
+    mt = mt.key_cols_by(trait_type=mt.trait_type,
+                        phenocode=hl.case()
+                        .when(mt.phenocode == "AbbVie_Alzheimers", "Alzheimers_custom1")
+                        .when(mt.phenocode == "Alzheimers_BI", "Alzheimers_custom2")
+                        .when(mt.phenocode == "AbbVie_IBD", "IBD_custom1")
+                        .when(mt.phenocode == "IBD_pfe", "IBD_custom2")
+                        .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom")
+                        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom"))
+                        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom"))
+                        .default(mt.phenocode),
+                        pheno_sex=mt.pheno_sex,
+                        coding=mt.coding,
+                        modifier=hl.if_else(hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier), 'custom',
+                                            mt.modifier))
+    mt = mt.annotate_cols(description=hl.case()
+                          .when(mt.description.matches("AbbVie"), mt.description.replace("AbbVie ", ""))
+                          .when(mt.description.matches("pfe"), mt.description.replace(" \(pfe\)", ""))
+                          .default(mt.description))
     return mt
+
 
 def drop_pheno_fields_mt(mt: hl.MatrixTable):
     """
@@ -689,7 +1393,7 @@ def drop_pheno_fields_mt(mt: hl.MatrixTable):
     :return: Hail MatrixTable with fields removed
     :rtype: hl.MatrixTable
     """
-    return mt.drop('Abbvie_Priority', 'Biogen_Priority', 'Pfizer_Priority', 'score')
+    return mt.drop("Abbvie_Priority", "Biogen_Priority", "Pfizer_Priority", "score")
 
 
 def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75):
@@ -700,13 +1404,32 @@ def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75):
     :return: Hail MatrixTable with phenotype QC metrics
     :rtype: MatrixTable
     """
-    pheno_corr = hl.read_table(get_ukb_exomes_sumstat_path(subdir='qc', dataset='correlated', result_type='phenos'))
-    mt = mt.annotate_cols(**{f'keep_pheno_{test}':(mt[f'lambda_gc_{test}'] > lambda_lower) for test in TESTS},
-                           keep_pheno_unrelated=hl.is_missing(pheno_corr.key_by(**{field: pheno_corr.node[field] for field in mt.col_key})[mt.col_key]))
+    pheno_corr = hl.read_table(
+        get_ukb_exomes_sumstat_path(
+            subdir="qc", dataset="correlated", result_type="phenos"
+        )
+    )
+    mt = mt.annotate_cols(
+        **{
+            f"keep_pheno_{test}": (mt[f"lambda_gc_{test}"] > lambda_lower)
+            for test in TESTS
+        },
+        keep_pheno_unrelated=hl.is_missing(
+            pheno_corr.key_by(
+                **{field: pheno_corr.node[field] for field in mt.col_key}
+            )[mt.col_key]
+        ),
+    )
     return mt
 
-def annotate_gene_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75,
-                               caf_lower: float = 0.0001, coverage_min: int = 20, n_var_min: int = 2):
+
+def annotate_gene_qc_metric_mt(
+    mt: hl.MatrixTable,
+    lambda_lower: float = 0.75,
+    caf_lower: float = 0.0001,
+    coverage_min: int = 20,
+    n_var_min: int = 2,
+):
     """
     Annotate QC metrics to gene table
     :param MatrixTable mt: Input original result Matrixtable
@@ -717,8 +1440,13 @@ def annotate_gene_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75,
     :return: Hail MatrixTable with gene QC metrics
     :rtype: MatrixTable
     """
-    mt = mt.annotate_rows(**{f'keep_gene_{test}': (mt[f'synonymous_lambda_gc_{test}'] > lambda_lower)  for test in TESTS},
-                              keep_gene_coverage=mt.mean_coverage > coverage_min,
-                              keep_gene_caf=mt.CAF > caf_lower,
-                              keep_gene_n_var=mt.total_variants >= n_var_min)
+    mt = mt.annotate_rows(
+        **{
+            f"keep_gene_{test}": (mt[f"synonymous_lambda_gc_{test}"] > lambda_lower)
+            for test in TESTS
+        },
+        keep_gene_coverage=mt.mean_coverage > coverage_min,
+        keep_gene_caf=mt.CAF > caf_lower,
+        keep_gene_n_var=mt.total_variants >= n_var_min,
+    )
     return mt
