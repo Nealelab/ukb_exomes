@@ -183,9 +183,9 @@ def compute_lambda_gc_ht(
             )
     else:  # Variant Info
         if freq_lower is not None:
-            mt = mt.filter_rows(mt.AF > freq_lower)
+            mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
         if freq_upper is not None:
-            mt = mt.filter_rows(mt.AF <= freq_upper)
+            mt = mt.filter_rows(mt.call_stats.AF <= freq_upper)
         mt = mt.annotate_rows(
             annotation=hl.if_else(
                 hl.literal({"missense", "LC"}).contains(mt.annotation),
@@ -338,7 +338,7 @@ def compute_lambdas_by_expected_ac_ht(
         get_results_mt_path("variant", random_phenos=random_phenos)
     )
     if freq_lower is not None:
-        mt = mt.filter_rows(mt.AF > freq_lower)
+        mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
     if random_phenos:
         mt = (
             mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0])
@@ -347,7 +347,7 @@ def compute_lambdas_by_expected_ac_ht(
         )
     if var_filter:
         mt = mt.filter_rows(hl.is_defined(mt.annotation))
-        mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
+        mt = mt.annotate_entries(expected_AC=mt.call_stats.AF * mt.n_cases)
         mt = mt.annotate_cols(
             lambda_gc0=hl.agg.filter(
                 (mt.expected_AC <= ac_breaks[0]) & (mt.SE != 0),
@@ -377,7 +377,7 @@ def compute_lambdas_by_expected_ac_ht(
             ),
         )
     else:
-        mt = mt.annotate_entries(expected_AC=mt.AF * mt.n_cases)
+        mt = mt.annotate_entries(expected_AC=mt.call_stats.AF * mt.n_cases)
         mt = mt.annotate_cols(
             lambda_gc0=hl.agg.filter(
                 mt.expected_AC <= ac_breaks[0],
@@ -550,11 +550,15 @@ def get_caf_info_ht(tranche: str = CURRENT_TRANCHE):
     sum_af = var_af.group_by(var_af.annotation, var_af.gene_id).aggregate(
         CAF=hl.agg.sum(var_af.AF)
     )
-    if tranche == '500k':
-        sub_af = sum_af.filter(hl.literal({"missense|LC", "pLoF"}).contains(sum_af.annotation))
+    if tranche == "500k":
+        sub_af = sum_af.filter(
+            hl.literal({"missense|LC", "pLoF"}).contains(sum_af.annotation)
+        )
         sub_af = sub_af.key_by()
-        sub_af = sub_af.annotate(annotation = 'pLoF|missense|LC')
-        sub_af = sub_af.group_by('annotation', 'gene_id').aggregate(CAF=hl.agg.sum(sub_af.CAF))
+        sub_af = sub_af.annotate(annotation="pLoF|missense|LC")
+        sub_af = sub_af.group_by("annotation", "gene_id").aggregate(
+            CAF=hl.agg.sum(sub_af.CAF)
+        )
         sum_af = sub_af.union(sum_af)
     return sum_af
 
@@ -884,9 +888,9 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
             var.annotation,
         ),
     )
-    if tranche == '500k':
+    if tranche == "500k":
         sub = var.filter(hl.literal({"missense|LC", "pLoF"}).contains(var.annotation))
-        sub = sub.annotate(annotation = 'pLoF|missense|LC')
+        sub = sub.annotate(annotation="pLoF|missense|LC")
         var = sub.union(var)
     mean_coverage = var.group_by("gene_id", "gene_symbol", "annotation").aggregate(
         mean_coverage=hl.agg.mean(var.coverage)
@@ -1096,9 +1100,9 @@ def get_pheno_pvalue_ht(
             mt = mt.drop("annotation", "AF")
             mt = mt.annotate_rows(annotation=mt.annt, AF=mt.af)
         if freq_lower is not None:
-            mt = mt.filter_rows(mt.AF > freq_lower)
+            mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
         if freq_upper is not None:
-            mt = mt.filter_rows(mt.AF <= freq_upper)
+            mt = mt.filter_rows(mt.call_stats.AF <= freq_upper)
         mt = mt.annotate_rows(
             annotation=hl.if_else(
                 hl.literal({"missense", "LC"}).contains(mt.annotation),
@@ -1363,26 +1367,69 @@ def modify_phenos_mt(mt: hl.MatrixTable):
     mt = mt.filter_cols(
         (mt.n_cases_defined >= 100)
         & ~((mt.phenocode == "20004") & ((mt.coding == "1490") | (mt.coding == "1540")))
+        & ~((mt.phenocode == "Allergy_pfe") | (mt.phenocode == "AnyAutoimmune_pfe"))
     )
-
-    mt = mt.key_cols_by(trait_type=mt.trait_type,
-                        phenocode=hl.case()
-                        .when(mt.phenocode == "AbbVie_Alzheimers", "Alzheimers_custom1")
-                        .when(mt.phenocode == "Alzheimers_BI", "Alzheimers_custom2")
-                        .when(mt.phenocode == "AbbVie_IBD", "IBD_custom1")
-                        .when(mt.phenocode == "IBD_pfe", "IBD_custom2")
-                        .when(mt.phenocode.startswith("AbbVie_"), mt.phenocode.replace("AbbVie_", "") + "_custom")
-                        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom"))
-                        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom"))
-                        .default(mt.phenocode),
-                        pheno_sex=mt.pheno_sex,
-                        coding=mt.coding,
-                        modifier=hl.if_else(hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier), 'custom',
-                                            mt.modifier))
-    mt = mt.annotate_cols(description=hl.case()
-                          .when(mt.description.matches("AbbVie"), mt.description.replace("AbbVie ", ""))
-                          .when(mt.description.matches("pfe"), mt.description.replace(" \(pfe\)", ""))
-                          .default(mt.description))
+    mt = mt.annotate_cols(
+        description=hl.case()
+        .when(mt.description.matches("AbbVie"), mt.description.replace("AbbVie ", ""))
+        .when(mt.description.matches("pfe"), mt.description.replace(" \(pfe\)", ""))
+        .default(mt.description)
+    )
+    mt = mt.key_cols_by(
+        phenocode=hl.case()
+        .when(mt.phenocode == "AbbVie_Alzheimers", "Alzheimers_custom1")
+        .when(mt.phenocode == "Alzheimers_BI", "Alzheimers_custom2")
+        .when(mt.phenocode == "AbbVie_IBD", "IBD_custom1")
+        .when(mt.phenocode == "IBD_pfe", "IBD_custom2")
+        .when(
+            mt.phenocode.startswith("AbbVie_"),
+            mt.phenocode.replace("AbbVie_", "") + "_custom",
+        )
+        .when(mt.phenocode.endswith("_pfe"), mt.phenocode.replace("_pfe", "_custom"))
+        .when(mt.phenocode.endswith("_BI"), mt.phenocode.replace("_BI", "_custom"))
+        .default(mt.phenocode),
+    )
+    mt = mt.annotate_cols(
+        description=hl.if_else(
+            mt.phenocode.startswith("WBFMadjBMI_")
+            | mt.phenocode.startswith("WBfatmass_"),
+            mt.description.replace("fat", "fat free"),
+            mt.description,
+        ),
+        description_more=hl.if_else(
+            mt.phenocode.startswith("WBFMadjBMI_")
+            | mt.phenocode.startswith("WBfatmass_"),
+            mt.description_more.replace("mass", "free mass"),
+            mt.description_more,
+        ),
+    )
+    mt = mt.annotate_cols(
+        description=hl.if_else(
+            mt.description.matches("WBFMadjBMI"),
+            mt.description.replace("WBFMadjBMI", "WBFFMadjBMI"),
+            mt.description,
+        )
+    )
+    mt = mt.key_cols_by(
+        trait_type=mt.trait_type,
+        phenocode=hl.case()
+        .when(
+            mt.phenocode.startswith("WBFMadjBMI_"),
+            mt.phenocode.replace("WBFMadjBMI_", "WBFFMadjBMI_"),
+        )
+        .when(
+            mt.phenocode.startswith("WBfatmass_"),
+            mt.phenocode.replace("WBfatmass_", "WBfatfreemass_"),
+        )
+        .default(mt.phenocode),
+        pheno_sex=mt.pheno_sex,
+        coding=mt.coding,
+        modifier=hl.if_else(
+            hl.set({"biogen", "abbvie", "pfizer"}).contains(mt.modifier),
+            "custom",
+            mt.modifier,
+        ),
+    )
     return mt
 
 
