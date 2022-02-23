@@ -1396,12 +1396,20 @@ def modify_phenos_mt(mt: hl.MatrixTable):
             mt.description,
         )
     )
+
+    import random
+    random.seed()
+    alz_order = [1, 2]
+    random.shuffle(alz_order)
+    ibd_order = [1, 2]
+    random.shuffle(ibd_order)
+
     mt = mt.key_cols_by(
         phenocode=hl.case()
-        .when(mt.phenocode == "AbbVie_Alzheimers", "Alzheimers_custom1")
-        .when(mt.phenocode == "Alzheimers_BI", "Alzheimers_custom2")
-        .when(mt.phenocode == "AbbVie_IBD", "IBD_custom1")
-        .when(mt.phenocode == "IBD_pfe", "IBD_custom2")
+        .when(mt.phenocode == "AbbVie_Alzheimers", f"Alzheimers_custom{alz_order[0]}")
+        .when(mt.phenocode == "Alzheimers_BI", f"Alzheimers_custom{alz_order[1]}")
+        .when(mt.phenocode == "AbbVie_IBD", f"IBD_custom{ibd_order[0]}")
+        .when(mt.phenocode == "IBD_pfe", f"IBD_custom{ibd_order[1]}")
         .when(
             mt.phenocode.startswith("AbbVie_"),
             mt.phenocode.replace("AbbVie_", "") + "_custom",
