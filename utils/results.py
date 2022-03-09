@@ -10,7 +10,7 @@ ANNOTATIONS = ("pLoF", "missense|LC", "synonymous", "pLoF|missense|LC")
 TESTS = ("skato", "skat", "burden")
 TRAIT_TYPES = ("continuous", "categorical", "icd10")
 P_VALUE_FIELDS = {"skato": "Pvalue", "skat": "Pvalue_SKAT", "burden": "Pvalue_Burden"}
-EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-8, "burden": 6.7e-7, "variant": 8e-9}
+EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-7, "burden": 6.7e-7, "variant": 8e-9}
 
 
 def get_ukb_exomes_sumstat_path(
