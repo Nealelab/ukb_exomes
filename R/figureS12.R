@@ -1,27 +1,27 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/final_figures/'
 
 figureS12 = function(save_plot = F, output_path){
-  lambda_gene_full_before = load_ukb_file('lambda_by_pheno_full_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
-  lambda_gene_full_after = load_ukb_file('lambda_by_pheno_full_filtered_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
+  lambda_gene_full_before = load_ukb_file(paste0('lambda_by_pheno_full_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+  lambda_gene_full_after = load_ukb_file(paste0('lambda_by_pheno_full_filtered_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
 
   lambda_gene_full_before = format_full_lambda_data(lambda_gene_full_before)
   lambda_gene_full_after = format_full_lambda_data(lambda_gene_full_after)
 
   figureS12a = lambda_gene_full_before %>%
     ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-    geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
+    geom_point(alpha = 0.5, size = 0.8) + ylim(0, 2) + theme_classic() +
     labs(y = 'Lambda GC', x = '') +
     geom_hline(yintercept = 1, lty = 2) +
     scale_x_log10(label = comma, limits = c(2, NA)) +
     trait_color_scale + trait_fill_scale +
     facet_wrap(~result_type, ncol = 3, labeller = label_type) + themes +
-    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"))
+    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"))+
+    theme(axis.text.x = element_text(size = 6, vjust = 0.8))
 
   figureS12b = lambda_gene_full_after %>%
     ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-    geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
+    geom_point(alpha = 0.5, size = 0.8) + ylim(0, 2) + theme_classic() +
     labs(y = 'Lambda GC', x = 'Number of Cases') +
     geom_hline(yintercept = 1, lty = 2) +
     scale_x_log10(label = comma, limits = c(2, NA)) +
@@ -29,7 +29,7 @@ figureS12 = function(save_plot = F, output_path){
     facet_wrap(~result_type, ncol = 3, labeller = label_type) + themes +
     theme(legend.position = 'none',
           plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"),
-          axis.text.x = element_text(size = 6))
+          axis.text.x = element_text(size = 6, vjust = 0.8))
 
   figure = ggarrange(figureS12a, figureS12b,  labels = c('(A) Before', '(B) After'), nrow = 2,
                   label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))

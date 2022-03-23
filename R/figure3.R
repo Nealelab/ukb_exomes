@@ -1,11 +1,17 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-test = 'skato'
-output = '~/Desktop/final_figures/'
 
-gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
-var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/', force_cols = var_cols)
+pheno_sig_after = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_gene_', tranche,'.txt.bgz'), subfolder = 'analysis/') %>%
+  select(phenocode, description, all_sig_gene_cnt)
+pheno_sig_after_var = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_var_', tranche,'.txt.bgz'), subfolder = 'analysis/') %>%
+  select(phenocode, description, all_sig_var_cnt)
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/')
+var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/', force_cols = var_cols)
 
+if(tranche=='500k'){
+  gene_sig_after = gene_sig_after %>%
+    filter(annotation != 'pLoF|missense|LC')
+}
 figure3c = function(save_plot=F, output_path){
   pext = var_sig_after %>%
     filter(tx_annotation_csq == most_severe_consequence &
@@ -34,16 +40,29 @@ figure3c = function(save_plot=F, output_path){
 }
 
 figure3 = function(save_plot = F, output_path){
-  gene_sig_sum = format_sig_cnt_summary_data(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
-  var_sig_sum = format_sig_cnt_summary_data(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
+  if(tranche=='500k'){
+    var_sig_sum = format_sig_cnt_summary_data_500k(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
+    figure3a = save_prop_by_annt_freq_figure_500k(var_sig_sum, output_path = paste0(output, 'figure3a_',tranche, '_', test,'.png'), save_plot = save_plot)
+  }else{
+    var_sig_sum = format_sig_cnt_summary_data(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
+    figure3a = save_prop_by_annt_freq_figure(var_sig_sum, output_path = paste0(output, 'figure3a.png'), save_plot = save_plot)
+  }
+
   clinvar_sum = var_sig_after %>% filter(!is.na(pathogenicity)) %>%
     mutate(interval = get_freq_interval(AF)) %>%
-    mutate(interval = factor(interval, levels = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )'))) %>%
+    mutate(interval = factor(interval, levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'))) %>%
     group_by(interval, pathogenicity) %>%
     sig_cnt_summary('all_sig_pheno_cnt')
 
-  figure3a = save_prop_by_annt_freq_figure(var_sig_sum, output_path = paste0(output, 'figure3a.png'), save_plot = save_plot)
-  figure3b = save_prop_by_annt_freq_figure(gene_sig_sum, output_path = paste0(output, 'figure3b.png'), save_plot = save_plot)
+
+  if(tranche=='500k'){
+    gene_sig_sum = format_sig_cnt_summary_data_500k(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
+    figure3b = save_prop_by_annt_freq_figure_500k(gene_sig_sum, output_path = paste0(output, 'figure3b_',tranche, '_', test,'.png'), save_plot = save_plot)
+  }else{
+    gene_sig_sum = format_sig_cnt_summary_data(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
+    figure3b = save_prop_by_annt_freq_figure(gene_sig_sum, output_path = paste0(output, 'figure3b_',tranche, '_', test,'.png'), save_plot = save_plot)
+  }
   figure3c = figure3c(save_plot = T, paste0(output, 'figure3c_splice_variant.png'))
   figure3d = save_group_matched_figure2(clinvar_sum, levels = c('P/LP', 'VUS', 'B/LB'),
                               labels = c( 'Pathogenic/Likely Pathogenic', 'Uncertain significance', 'Benign/Likely Benign'),

@@ -1,18 +1,16 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-test = 'skato'
-output = '~/Desktop/final_figures/'
 
-gene = load_ukb_file('gene_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
-var = load_ukb_file('variant_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
-pheno = load_ukb_file('pheno_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/')
+gene = load_ukb_file(paste0('gene_qc_metrics_ukb_exomes_', tranche,'.txt.bgz'), subfolder = 'qc/')
+var = load_ukb_file(paste0('variant_qc_metrics_ukb_exomes_', tranche,'.txt.bgz'), subfolder = 'qc/')
+pheno = load_ukb_file(paste0('pheno_qc_metrics_ukb_exomes_', tranche,'.txt.bgz'), subfolder = 'qc/')
 
 figure1 = function(save_plot = F, output_path){
   figure1_cnt = data.frame(
     type = rep(c('Variants', 'Groups', 'Phenotypes'), 2),
     cnt = as.integer(c(nrow(var), nrow(gene), nrow(pheno),
-                       sum(var$keep_var_af & var$keep_var_annt),
-                       sum(gene$keep_gene_caf & gene$keep_gene_coverage & gene$keep_gene_n_var & gene[paste0('keep_gene_',test)], na.rm = TRUE),
+                       sum(var$keep_var_expected_ac & var$keep_var_annt),
+                       sum(gene$keep_gene_expected_ac & gene$keep_gene_coverage & gene$keep_gene_n_var & gene[paste0('keep_gene_',test)], na.rm = TRUE),
                        sum(pheno$keep_pheno_unrelated & pheno[paste0('keep_pheno_', test)]))),
     filter = rep(c('Before Filtering', 'After Filtering'), each = 3)
   ) %>% mutate(filter = factor(filter, levels = c('Before Filtering', 'After Filtering')))
@@ -22,10 +20,10 @@ figure1 = function(save_plot = F, output_path){
   figure1c = save_count_barplot_figure(cnt_data = figure1_cnt, cnt_type = 'Groups',  save_plot = T, output_path = paste0(output, 'figure1c_gene_cnt.png'))
 
   gene_cnt_by_freq = gene %>%
-    filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var & get(paste0('keep_gene_',test))) %>%
+    filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var & get(paste0('keep_gene_',test))) %>%
     format_count_by_freq_data(freq_col = 'CAF')
   var_cnt_by_freq = var %>%
-    filter(keep_var_af & keep_var_annt) %>%
+    filter(keep_var_expected_ac & keep_var_annt) %>%
     mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation)) %>%
     format_count_by_freq_data(freq_col = 'AF')
 

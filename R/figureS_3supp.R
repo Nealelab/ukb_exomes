@@ -1,0 +1,60 @@
+source('~/ukb_exomes/R/constants.R')
+detach(package:plyr)
+
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/')
+var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/', force_cols = var_cols) %>%
+  format_variant_call_stats(.)
+
+if(tranche=='500k'){
+  gene_sig_after = gene_sig_after %>%
+    filter(annotation != 'pLoF|missense|LC')
+}
+
+save_prop_by_annt_freq_figure_500k_supp = function(matched_summary, type, output_path, save_plot = F){
+  matched_summary = matched_summary %>%
+      filter(!(interval %in% c('(0.0001, 0.001]', '(0.001, 0.005]','(0.005, 0.01]'))) %>%
+      mutate(annotation = factor(annotation, levels = annotation_types, labels = annotation_names))
+  plt = matched_summary %>%
+      ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
+      geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
+      labs(y = 'Proportion', x = NULL)  +
+      scale_y_continuous(label = label_percent(accuracy = 1)) +
+      annotation_color_scale + annotation_fill_scale  +
+      facet_grid(~interval, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
+      theme(panel.spacing = unit(0, "lines"),
+            strip.background = element_blank(),
+            strip.placement = "outside",
+            strip.text = element_text(face = 'bold'),
+            axis.text= element_text(size = 10),
+            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) ) +
+    # scale_x_discrete(labels = c(matched_summary$labels)) +
+    geom_text(aes(y = 0.002, label=paste(cnt, type), vjust = -1), size = 2)
+  if(save_plot){
+    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
+figure3supp <- function(save_plot=F, output_path){
+  if(tranche=='500k'){
+    gene_sig_sum = format_sig_cnt_summary_data_500k(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
+    var_sig_sum = format_sig_cnt_summary_data_500k(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
+  }else{
+    gene_sig_sum = format_sig_cnt_summary_data(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
+    var_sig_sum = format_sig_cnt_summary_data(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
+  }
+  figure3b_supp1 = save_prop_by_annt_freq_figure_500k_supp(var_sig_sum, 'variants' ,  output_path = paste0(output, 'figure3b_supp_var_',tranche, '_', test,'.png'), save_plot = TRUE)
+  figure3b_supp2 = save_prop_by_annt_freq_figure_500k_supp(gene_sig_sum, 'genes', output_path = paste0(output, 'figure3b_supp_gene_',tranche, '_', test,'.png'), save_plot = TRUE)
+
+  figure3_supp = ggarrange(figure3b_supp1, figure3b_supp2, labels = c('(A) Single-Variant', '(B) SKAT-O'), nrow=2, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
+  if(save_plot){
+      png(output_path, height = 6, width = 7.5, units = 'in', res = 300)
+      print(figure3_supp)
+      dev.off()
+  }
+  return(figure3_supp)
+}
+
+figure3supp(save_plot = T, paste0(output_path, 'figure3b_supp_',tranche, '_', test,'.png'))

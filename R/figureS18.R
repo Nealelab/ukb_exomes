@@ -1,14 +1,14 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-test = 'skato'
-output = '~/Desktop/final_figures/'
 
-var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/' ,force_cols = var_cols)
+var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/' ,force_cols = var_cols)
 
 figureS18 = function(save_plot = F, output_path){
   polyphen_sum = var_sig_after %>%
-    filter(AF <= 0.01 & !is.na(polyphen2) & polyphen2 != 'unknown') %>%
-    mutate(interval = factor(get_freq_interval(AF), levels = af_int)) %>%
+    filter(AF <= 0.1 & AF > 0.0001) %>%
+    filter(!is.na(polyphen2) & polyphen2 != 'unknown') %>%
+    mutate(interval = factor(get_freq_interval(AF), levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'))) %>%
     group_by(interval, polyphen2) %>%
     sig_cnt_summary('all_sig_pheno_cnt') %>%
       mutate(no_sig_cnt = cnt - sig_cnt)
@@ -21,13 +21,15 @@ figureS18 = function(save_plot = F, output_path){
     mutate(sig_label = if_else(p.value < 0.001, '**', '*'),
            x  = as.numeric(group1),
            xend = as.numeric(group2),
-           y = prop + (x + xend) * 0.002,
+           y = prop + abs(x + xend-3.15) * 0.015,
            group1 = polyphen2_levels[x],
            group2 = polyphen2_levels[xend]) %>%
     filter(p.value<0.05)
 
   figure = polyphen_sum %>%
-    mutate(group = factor(polyphen2, levels = polyphen2_levels, labels = polyphen2_labels)) %>%
+    mutate(group = factor(polyphen2, levels = polyphen2_levels, labels = polyphen2_labels),
+           interval = factor(interval, levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'))) %>%
     ggplot +
     geom_pointrange(aes(x = group, y = prop, ymin = prop-sd, ymax = prop+sd, color = group),
                     stat = "identity", position = position_dodge(width = 2)) +
@@ -53,4 +55,4 @@ figureS18 = function(save_plot = F, output_path){
   return(figure)
 }
 
-figureS18(save_plot = T, output_path = paste0(output, 'figureS18_polyphen.png'))
+figureS18(save_plot = T, output_path = paste0(output, 'figureS18_polyphen_',tranche, '_', test,'.png'))

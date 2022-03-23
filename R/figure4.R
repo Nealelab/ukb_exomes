@@ -1,13 +1,13 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output = '~/Desktop/final_figures/'
-test = 'skato'
 
-gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/')
 gene_info = load_ukb_file('gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz', subfolder = 'analysis/')
 gene_DD = load_ukb_file('forKonrad_sig31kDNM_consensus_genes_2021_01_12.txt', subfolder = 'analysis/')
 ## https://github.com/macarthur-lab/gene_lists.git
 setwd('~/gene_lists/lists/')
+gene_sig_after = gene_sig_after %>%
+  filter(annotation != 'pLoF|missense|LC')
 figure4 = function(save_plot = F, output_path){
   universe = as.data.frame(fread('universe.tsv', quote="", header = F))
   gene_universe = gene_sig_after %>% filter(gene_symbol %in% universe[, 1])
@@ -41,9 +41,9 @@ figure4 = function(save_plot = F, output_path){
     select(sig_cnt, no_sig_cnt, gene_set_name, annotation, panel) %>%
     group_by(annotation, gene_set_name, panel)%>%
     group_modify(~ broom::tidy(fisher.test(as.matrix(.)))) %>%
-    merge(.,matched %>% group_by(annotation, gene_set_name) %>% summarise(prop = max(prop)), by = c('annotation', 'gene_set_name')) %>%
+    merge(.,matched %>% group_by(gene_set_name) %>% summarise(pos = max(prop+sd)), by = c('gene_set_name')) %>%
     mutate(sig_label = if_else(p.value < 0.001, '**', if_else(p.value < 0.05, '*', '')),
-           annotation = factor(annotation, levels = annotation_types), ) %>%
+           annotation = factor(annotation, levels = annotation_types), pos = 0.18) %>%
     filter(p.value< 0.05)
 
   figure4_p1 = matched %>% filter(panel == 1) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 1))

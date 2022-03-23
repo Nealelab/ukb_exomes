@@ -1,10 +1,8 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/final_figures/'
 
 figureS11 = function(save_plot = F, output_path){
-  # Filtered n_var<2 & coverage<20
-  lambda_gene_caf = load_ukb_file('lambda_by_pheno_freq_filtered_gene_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
+  lambda_gene_caf = load_ukb_file(paste0('lambda_by_pheno_freq_filtered_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
   lambda_gene_caf = lambda_gene_caf %>%
     pivot_longer_lambda_data() %>%
     mutate(trait_type2 = factor(trait_type2, levels = trait_types),
@@ -12,7 +10,7 @@ figureS11 = function(save_plot = F, output_path){
 
   figure = lambda_gene_caf %>%
     ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-    geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
+    geom_point(alpha = 0.5, size = 0.8) + ylim(0, 2) + theme_classic() +
     labs(y = 'Lambda GC', x = 'Number of Cases') +
     geom_hline(yintercept = 1, lty = 2) +
     scale_x_log10(label = comma, limits = c(2, NA)) +
@@ -21,7 +19,7 @@ figureS11 = function(save_plot = F, output_path){
     theme(axis.text.x = element_text(size = 6, angle = 45, vjust = 0.8))
 
   if(save_plot){
-    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    png(output_path, height = 5, width = 7.5, units = 'in', res = 300)
     print(figure)
     dev.off()
   }
