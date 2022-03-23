@@ -5,12 +5,17 @@ from ukbb_common import *
 from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.vep import process_consequences
 from ..resources import *
+import logging
 
 ANNOTATIONS = ("pLoF", "missense|LC", "synonymous", "pLoF|missense|LC")
 TESTS = ("skato", "skat", "burden")
 TRAIT_TYPES = ("continuous", "categorical", "icd10")
 P_VALUE_FIELDS = {"skato": "Pvalue", "skat": "Pvalue_SKAT", "burden": "Pvalue_Burden"}
-EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-8, "burden": 6.7e-7, "variant": 8e-9}
+EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-7, "burden": 6.7e-7, "variant": 8e-9}
+
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger(f"UKB {CURRENT_TRANCHE} exomes")
+logger.setLevel(logging.INFO)
 
 
 def get_ukb_exomes_sumstat_path(
@@ -50,8 +55,9 @@ def compute_lambda_gc_ht(
     result_type: str = "gene",
     by_annotation: bool = False,
     by_gene: bool = False,
-    freq_lower: float = None,
-    freq_upper: float = None,
+    expected_AC_min: int = None,
+    freq_min: float = None,
+    freq_max: float = None,
     n_var_min: int = None,
     coverage_min: int = None,
     var_filter: bool = False,
@@ -63,8 +69,9 @@ def compute_lambda_gc_ht(
     :param str result_type: Type of association test result, `gene` or `variant`
     :param bool by_annotation: Whether to group by annotation categories
     :param bool by_gene: Whether to compute lambda GC for each gene, applicable only for result_type == `gene`
-    :param float freq_lower: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
-    :param float freq_upper: Upper bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param int expected_AC_min: the lower bound used to remove genes/variants with 0 phenotypes having expected AC greater than this.
+    :param float freq_min: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param float freq_max: Upper bound of allele frequency/cumulative allele frequency used for variant/gene filtering
     :param int n_var_min: Minimum number of variants included in a gene-based test used for gene filtering
     :param int coverage_min: Minimum coverage used for gene filtering
     :param bool var_filter: Whether to filter out test statistics with SE=0
@@ -74,21 +81,43 @@ def compute_lambda_gc_ht(
     :rtype: Table
     """
     mt = hl.read_matrix_table(
-        get_results_mt_path(result_type, tranche, random_phenos=random_phenos)
+        get_results_mt_path(result_type, tranche=tranche, random_phenos=random_phenos)
     )
     if result_type == "gene":  # Gene Info
         mt = annotate_additional_info_mt(
-            result_mt=mt, result_type=result_type, tranche=tranche
+            mt=mt, result_type=result_type, tranche=tranche
         )
-        if freq_lower is not None:
-            mt = mt.filter_rows(mt.CAF > freq_lower)
-        if freq_upper is not None:
-            mt = mt.filter_rows(mt.CAF <= freq_upper)
+        if expected_AC_min is not None:
+            logger.info(
+                f"Removing {result_type}s with 0 phenotypes having expected AC >= %d...",
+                expected_AC_min,
+            )
+            mt = mt.annotate_rows(
+                expected_ac_row_filter=hl.agg.count_where(
+                    mt.expected_AC >= expected_AC_min
+                )
+            )
+            mt = mt.filter_rows(mt.expected_ac_row_filter > 0)
+        if freq_min is not None:
+            logger.info(f"Removing {result_type}s with CAF <= {freq_min}...")
+            mt = mt.filter_rows(mt.CAF > freq_min)
+        if freq_max is not None:
+            logger.info(f"Removing {result_type}s with CAF > {freq_max}...")
+            mt = mt.filter_rows(mt.CAF <= freq_max)
         if n_var_min is not None:
+            logger.info(
+                f"Removing {result_type}s with number of variants < {n_var_min}..."
+            )
             mt = mt.filter_rows(mt.total_variants >= n_var_min)
         if coverage_min is not None:
-            mt = mt.filter_rows(mt.mean_coverage > coverage_min)
+            logger.info(
+                f"Removing {result_type}s with mean coverage < {coverage_min}..."
+            )
+            mt = mt.filter_rows(mt.mean_coverage >= coverage_min)
         if by_annotation:
+            logger.info(
+                f"Computing lambda GC for {result_type}-based test results by annotation groups..."
+            )
             mt = mt.select_cols(
                 "n_cases",
                 lambda_gc_skato=hl.agg.group_by(
@@ -100,7 +129,7 @@ def compute_lambda_gc_ht(
                 lambda_gc_burden=hl.agg.group_by(
                     mt.annotation, hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden)
                 ),
-                CAF_range=f"CAF:({freq_lower}, {freq_upper}]",
+                CAF_range=f"CAF:({freq_min}, {freq_max}]",
             )
             mt = mt.annotate_cols(
                 **{
@@ -118,6 +147,7 @@ def compute_lambda_gc_ht(
                 ),
             )
         elif by_gene:
+            logger.info(f"Computing gene-level lambda GC")
             mt = mt.annotate_cols(
                 trait_type2=hl.if_else(
                     mt.trait_type == "continuous", mt.trait_type, "categorical"
@@ -159,6 +189,9 @@ def compute_lambda_gc_ht(
             )
             ht = mt.rows()
         else:
+            logger.info(
+                f"Computing lambda GC for {result_type}-based test results without stratification..."
+            )
             mt = mt.select_cols(
                 "n_cases",
                 lambda_gc_skato=hl.agg.filter(
@@ -173,7 +206,7 @@ def compute_lambda_gc_ht(
                     hl.is_defined(mt.Pvalue_Burden),
                     hl.methods.statgen._lambda_gc_agg(mt.Pvalue_Burden),
                 ),
-                CAF_range=f"CAF:({freq_lower}, {freq_upper}]",
+                CAF_range=f"CAF:({freq_min}, {freq_max}]",
             )
             ht = mt.cols()
             ht = ht.annotate(
@@ -182,10 +215,18 @@ def compute_lambda_gc_ht(
                 ),
             )
     else:  # Variant Info
-        if freq_lower is not None:
-            mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
-        if freq_upper is not None:
-            mt = mt.filter_rows(mt.call_stats.AF <= freq_upper)
+        if freq_min is not None:
+            mt = mt.filter_rows(mt.call_stats.AF > freq_min)
+        if freq_max is not None:
+            mt = mt.filter_rows(mt.call_stats.AF <= freq_max)
+        if expected_AC_min is not None:
+            mt = annotate_additional_info_mt(mt, "variant", True)
+            mt = mt.annotate_rows(
+                expected_ac_row_filter=hl.agg.count_where(
+                    mt.expected_AC >= expected_AC_min
+                )
+            )
+            mt = mt.filter_rows(mt.expected_ac_row_filter > 0)
         mt = mt.annotate_rows(
             annotation=hl.if_else(
                 hl.literal({"missense", "LC"}).contains(mt.annotation),
@@ -205,7 +246,7 @@ def compute_lambda_gc_ht(
                 mt = mt.select_cols(
                     "n_cases",
                     lambda_gc=lambda_gc,
-                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                    AF_range=f"AF:({freq_min}, {freq_max}]",
                 )
                 mt = mt.annotate_cols(
                     **{
@@ -220,7 +261,7 @@ def compute_lambda_gc_ht(
                 mt = mt.select_cols(
                     "n_cases",
                     lambda_gc=lambda_gc,
-                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                    AF_range=f"AF:({freq_min}, {freq_max}]",
                 )
         else:
             if by_annotation:
@@ -230,7 +271,7 @@ def compute_lambda_gc_ht(
                 mt = mt.select_cols(
                     "n_cases",
                     lambda_gc=lambda_gc,
-                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                    AF_range=f"AF:({freq_min}, {freq_max}]",
                 )
                 mt = mt.annotate_cols(
                     **{
@@ -246,7 +287,7 @@ def compute_lambda_gc_ht(
                 mt = mt.select_cols(
                     "n_cases",
                     lambda_gc=lambda_gc,
-                    AF_range=f"AF:({freq_lower}, {freq_upper}]",
+                    AF_range=f"AF:({freq_min}, {freq_max}]",
                 )
         ht = mt.cols()
         ht = ht.annotate(
@@ -258,11 +299,12 @@ def compute_lambda_gc_ht(
 
 
 def compute_lambdas_by_freq_interval_ht(
-    result_type="gene",
+    result_type: str = "gene",
     by_annotation: bool = False,
     freq_breaks: list = [0.0001, 0.001, 0.01, 0.1],
     n_var_min: int = None,
     coverage_min: int = None,
+    expected_AC_min: int = None,
     var_filter: bool = False,
     random_phenos: bool = False,
     tranche: str = CURRENT_TRANCHE,
@@ -274,18 +316,23 @@ def compute_lambdas_by_freq_interval_ht(
     :param list freq_breaks: Breaks to divide frequency into bins
     :param int n_var_min: Minimum number of variants included in a gene-based test used for gene filtering
     :param int coverage_min: Minimum coverage used for gene filtering
+    :param int expected_AC_min: the lower bound used to remove genes/variants with 0 phenotypes having expected AC greater than this.
     :param bool var_filter: Whether to filter out test statistics with SE=0
     :param bool random_pheno: Whether to use randomly-generated phenotypes
     :param str tranche: Tranche of data to use
     :return: Hail table with lambda GC by frequency intervals
     :rtype: Table
     """
+    logger.info(
+        f"Computing lambda GC for {result_type}-based test results across frequency intervals"
+    )
     ht = compute_lambda_gc_ht(
         result_type=result_type,
         by_annotation=by_annotation,
-        freq_upper=freq_breaks[0],
+        freq_max=freq_breaks[0],
         n_var_min=n_var_min,
         coverage_min=coverage_min,
+        expected_AC_min=expected_AC_min,
         random_phenos=random_phenos,
         tranche=tranche,
     )
@@ -293,10 +340,11 @@ def compute_lambdas_by_freq_interval_ht(
         sub_ht = compute_lambda_gc_ht(
             result_type=result_type,
             by_annotation=by_annotation,
-            freq_lower=freq_breaks[i],
-            freq_upper=freq_breaks[i + 1],
+            freq_min=freq_breaks[i],
+            freq_max=freq_breaks[i + 1],
             n_var_min=n_var_min,
             coverage_min=coverage_min,
+            expected_AC_min=expected_AC_min,
             var_filter=var_filter,
             random_phenos=random_phenos,
             tranche=tranche,
@@ -306,9 +354,10 @@ def compute_lambdas_by_freq_interval_ht(
         compute_lambda_gc_ht(
             result_type=result_type,
             by_annotation=by_annotation,
-            freq_lower=freq_breaks[-1],
+            freq_min=freq_breaks[-1],
             n_var_min=n_var_min,
             coverage_min=coverage_min,
+            expected_AC_min=expected_AC_min,
             var_filter=var_filter,
             random_phenos=random_phenos,
             tranche=tranche,
@@ -318,99 +367,142 @@ def compute_lambdas_by_freq_interval_ht(
 
 
 def compute_lambdas_by_expected_ac_ht(
-    freq_lower: float = None,
-    ac_breaks: list = [1, 10, 100, 1000, 10000, 100000],
+    result_type: str = "gene",
+    ac_breaks: list = [0, 5, 50, 500, 5000, 50000],
+    n_var_min: int = None,
+    coverage_min: int = None,
     var_filter: bool = False,
     random_phenos: bool = False,
     tranche: str = CURRENT_TRANCHE,
 ):
     """
     Compute Lambda GC for variant-level test by expected allele count interval
-    :param float freq_lower: Lower bound of allele frequency used for variant filtering
+    :param str result_type: Type of association test result, `gene` or `variant`
     :param list ac_breaks: Breaks to divide expected allele count into bins
-    :param bool var_filter: Whether to filter out test statistics with SE=0
     :param bool random_pheno: Whether to use randomly-generated phenotypes
     :param str tranche: Tranche of data to use
     :return: Hail table with lambda GC by expected allele count intervals
     :rtype: Table
     """
-    mt = hl.read_matrix_table(
-        get_results_mt_path("variant", random_phenos=random_phenos)
+    logger.info(
+        f"Computing lambda GC for {result_type}-based test results across expected AC bins"
     )
-    if freq_lower is not None:
-        mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
-    if random_phenos:
-        mt = (
-            mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0])
-            .drop("AF")
-            .rename({"AF2": "AF"})
-        )
-    if var_filter:
-        mt = mt.filter_rows(hl.is_defined(mt.annotation))
-        mt = mt.annotate_entries(expected_AC=mt.call_stats.AF * mt.n_cases)
-        mt = mt.annotate_cols(
-            lambda_gc0=hl.agg.filter(
-                (mt.expected_AC <= ac_breaks[0]) & (mt.SE != 0),
-                hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+    mt = hl.read_matrix_table(
+        get_results_mt_path(result_type, tranche=tranche, random_phenos=random_phenos)
+    )
+    mt = annotate_additional_info_mt(
+        mt=mt, result_type=result_type, expected_AC_only=True, tranche=tranche
+    )
+    if result_type == "gene":
+        if n_var_min is not None:
+            logger.info(
+                f"Removing {result_type}s with number of variants < {n_var_min}..."
             )
-        )
-        for i in list(range(0, len(ac_breaks) - 1)):
-            mt = mt.annotate_cols(
-                **{
-                    f"lambda_gc{ac_breaks[i]}": hl.agg.filter(
-                        (mt.expected_AC > ac_breaks[i])
-                        & (mt.expected_AC <= ac_breaks[i + 1])
-                        & (mt.SE != 0),
-                        hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
-                    )
-                }
+            mt = mt.filter_rows(mt.total_variants >= n_var_min)
+        if coverage_min is not None:
+            logger.info(
+                f"Removing {result_type}s with mean coverage < {coverage_min}..."
             )
-        mt = mt.annotate_cols(
+            mt = mt.filter_rows(mt.mean_coverage >= coverage_min)
+        ht = mt.annotate_cols(
+            expected_AC_range=f"expected_AC:({ac_breaks[-1]}, )",
             **{
-                f"lambda_gc{ac_breaks[-1]}": hl.agg.filter(
-                    (mt.expected_AC > ac_breaks[-1]) & (mt.SE != 0),
-                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                f"lambda_gc_{test_type}": hl.agg.filter(
+                    hl.is_defined(mt[P_VALUE_FIELDS[test_type]])
+                    & (mt.expected_AC > ac_breaks[-1]),
+                    hl.methods.statgen._lambda_gc_agg(mt[P_VALUE_FIELDS[test_type]]),
                 )
+                for test_type in TESTS
             },
-            trait_type2=hl.if_else(
-                mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
-            ),
-        )
-    else:
-        mt = mt.annotate_entries(expected_AC=mt.call_stats.AF * mt.n_cases)
-        mt = mt.annotate_cols(
-            lambda_gc0=hl.agg.filter(
-                mt.expected_AC <= ac_breaks[0],
-                hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
-            )
-        )
+            **{
+                f"n_{result_type}s_{test_type}": hl.agg.count_where(
+                    hl.is_defined(mt[P_VALUE_FIELDS[test_type]])
+                    & (mt.expected_AC > ac_breaks[-1])
+                )
+                for test_type in TESTS
+            },
+        ).cols()
         for i in list(range(0, len(ac_breaks) - 1)):
-            mt = mt.annotate_cols(
+            ht_tmp = mt.annotate_cols(
+                expected_AC_range=f"expected_AC:({ac_breaks[i]}, {ac_breaks[i + 1]}]",
                 **{
-                    f"lambda_gc{ac_breaks[i]}": hl.agg.filter(
-                        (mt.expected_AC > ac_breaks[i])
+                    f"lambda_gc_{test_type}": hl.agg.filter(
+                        hl.is_defined(mt[P_VALUE_FIELDS[test_type]])
+                        & (mt.expected_AC > ac_breaks[i])
                         & (mt.expected_AC <= ac_breaks[i + 1]),
-                        hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                        hl.methods.statgen._lambda_gc_agg(
+                            mt[P_VALUE_FIELDS[test_type]]
+                        ),
                     )
-                }
-            )
-        mt = mt.annotate_cols(
-            **{
-                f"lambda_gc{ac_breaks[-1]}": hl.agg.filter(
-                    mt.expected_AC > ac_breaks[-1],
-                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
-                )
-            },
-            trait_type2=hl.if_else(
-                mt.trait_type == "icd_first_occurrence", "icd10", mt.trait_type
-            ),
+                    for test_type in TESTS
+                },
+                **{
+                    f"n_{result_type}s_{test_type}": hl.agg.count_where(
+                        hl.is_defined(mt[P_VALUE_FIELDS[test_type]])
+                        & (mt.expected_AC > ac_breaks[i])
+                        & (mt.expected_AC <= ac_breaks[i + 1])
+                    )
+                    for test_type in TESTS
+                },
+            ).cols()
+            ht = ht.union(ht_tmp)
+        ht = ht.select(
+            *{f"lambda_gc_{test_type}" for test_type in TESTS},
+            *{f"n_genes_{test_type}" for test_type in TESTS},
+            "expected_AC_range",
+            "n_cases_defined",
         )
-    return mt.cols()
+    else:  # variant
+        if random_phenos:
+            mt = (
+                mt.annotate_rows(AF2=hl.agg.take(mt.AF, 1)[0])
+                .drop("AF")
+                .rename({"AF2": "AF"})
+            )
+        mt = mt.filter_rows(hl.is_defined(mt.annotation))
+        ht = mt.annotate_cols(
+            expected_AC_range=f"expected_AC:({ac_breaks[-1]}, )",
+            lambda_gc=hl.agg.filter(
+                hl.is_defined(mt.Pvalue)
+                & (mt.expected_AC > ac_breaks[-1])
+                & (mt.SE != 0),
+                hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+            ),
+            n_vars=hl.agg.count_where(
+                hl.is_defined(mt.Pvalue) & (mt.expected_AC > 100000) & (mt.SE != 0)
+            ),
+        ).cols()
+        for i in list(range(0, len(ac_breaks) - 1)):
+            ht_tmp = mt.annotate_cols(
+                expected_AC_range=f"expected_AC:({ac_breaks[i]}, {ac_breaks[i + 1]}]",
+                lambda_gc=hl.agg.filter(
+                    hl.is_defined(mt.Pvalue)
+                    & (mt.expected_AC > ac_breaks[i])
+                    & (mt.expected_AC <= ac_breaks[i + 1])
+                    & (mt.SE != 0),
+                    hl.methods.statgen._lambda_gc_agg(mt.Pvalue),
+                ),
+                n_vars=hl.agg.count_where(
+                    hl.is_defined(mt.Pvalue)
+                    & (mt.expected_AC > ac_breaks[i])
+                    & (mt.expected_AC <= ac_breaks[i + 1])
+                    & (mt.SE != 0)
+                ),
+            ).cols()
+            ht = ht.union(ht_tmp)
+        ht = ht.select("lambda_gc", "n_vars", "expected_AC_range", "n_cases_defined")
+    ht = ht.annotate(
+        trait_type2=hl.if_else(
+            ht.trait_type == "icd_first_occurrence", "icd10", ht.trait_type
+        ),
+    )
+    return ht
 
 
 def write_lambda_hts(
     result_type="gene",
-    freq_lower: float = None,
+    freq_min: float = None,
+    expected_AC_min: int = None,
     n_var_min: int = None,
     coverage_min: int = None,
     var_filter: bool = False,
@@ -422,7 +514,8 @@ def write_lambda_hts(
     """
     Write lambda GC tables for variant-level test or gene-level tests (SKAT-O, SKAT, and Burden Test) under different condition
     :param str result_type: Type of association test result, `gene` or `variant`
-    :param float freq_lower: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param float freq_min: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param int expected_AC_min: the lower bound used to remove genes/variants with 0 phenotypes having expected AC greater than this.
     :param int n_var_min: Minimum number of variants included in a gene-based test used for gene filtering
     :param int coverage_min: Minimum coverage used for gene filtering
     :param bool var_filter: Whether to filter out test statistics with SE=0
@@ -447,48 +540,69 @@ def write_lambda_hts(
     rp = "rp_" if random_phenos else ""
     filter = (
         "_filtered"
-        if any(v is not None for v in [freq_lower, n_var_min, coverage_min])
+        if any(
+            v is not None for v in [freq_min, n_var_min, coverage_min, expected_AC_min]
+        )
         else ""
     )
     freq_breaks = (
-        [freq_lower, 0.001, 0.01, 0.1]
-        if freq_lower is not None
+        [freq_min, 0.001, 0.01, 0.1]
+        if freq_min is not None
         else [0.0001, 0.001, 0.01, 0.1]
     )
 
-    compute_lambda_gc_ht(freq_lower=freq_lower, **kwargs).write(
+    compute_lambda_gc_ht(
+        freq_min=freq_min, expected_AC_min=expected_AC_min, **kwargs
+    ).write(
         get_ukb_exomes_sumstat_path(
             dataset=f"{rp}lambda_by_pheno_full{filter}", **pathargs
         ),
         overwrite=overwrite,
     )
-    compute_lambda_gc_ht(by_annotation=True, freq_lower=freq_lower, **kwargs).write(
+    compute_lambda_gc_ht(
+        by_annotation=True, freq_min=freq_min, expected_AC_min=expected_AC_min, **kwargs
+    ).write(
         get_ukb_exomes_sumstat_path(
             dataset=f"{rp}lambda_by_pheno_annt{filter}", **pathargs
         ),
         overwrite=overwrite,
     )
-    compute_lambdas_by_freq_interval_ht(freq_breaks=freq_breaks, **kwargs).write(
+    compute_lambdas_by_freq_interval_ht(
+        freq_breaks=freq_breaks, expected_AC_min=expected_AC_min, **kwargs
+    ).write(
         get_ukb_exomes_sumstat_path(
             dataset=f"{rp}lambda_by_pheno_freq{filter}", **pathargs
         ),
         overwrite=overwrite,
     )
 
+    compute_lambdas_by_expected_ac_ht(
+        ac_breaks=[0, 5, 50, 500, 5000, 50000], **kwargs
+    ).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_expected_ac{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
+
     if result_type == "gene":
-        compute_lambda_gc_ht(by_gene=True, **kwargs).write(
+        compute_lambda_gc_ht(
+            by_gene=True, expected_AC_min=expected_AC_min, **kwargs
+        ).write(
             get_ukb_exomes_sumstat_path(
                 subdir="qc/lambda_gc",
                 dataset=f"{rp}lambda_by_gene{filter}",
                 result_type="",
                 extension=extension,
+                tranche=tranche,
             ),
             overwrite=overwrite,
         )
         compute_lambda_gc_ht(
             result_type=result_type,
             by_gene=True,
-            freq_lower=freq_lower,
+            freq_min=freq_min,
+            expected_AC_min=expected_AC_min,
             n_var_min=n_var_min,
         ).write(
             get_ukb_exomes_sumstat_path(
@@ -496,6 +610,7 @@ def write_lambda_hts(
                 dataset=f"{rp}lambda_by_gene_before_coverage{filter}",
                 result_type="",
                 extension=extension,
+                tranche=tranche,
             ),
             overwrite=overwrite,
         )
@@ -749,6 +864,8 @@ def compare_gene_var_sig_cnt_mt(
         var = load_final_sumstats_table(
             result_type="variant", extension="mt", tranche=tranche
         )
+    if tranche == "500k":
+        mt = mt.filter_rows(mt.annotation != "pLoF|missense|LC")
     vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
     vep = process_consequences(vep)
     var = var.annotate_rows(
@@ -900,7 +1017,7 @@ def compute_mean_coverage_ht(tranche: str = CURRENT_TRANCHE):
 
 def more_cases_tie_breaker(l, r):
     """
-    Tie breaker function prefering phenotypes with more cases used in hl.maximal_independent_ser()
+    Tie breaker function prefering phenotypes with more cases used in hl.maximal_independent_set()
     :param l: one phenotype
     :param r: the other phenotype
     :return: integer indicating which phenotype is preferred
@@ -908,9 +1025,9 @@ def more_cases_tie_breaker(l, r):
     """
     return (
         hl.case()
-        .when(l.n_cases_both_sexes > r.n_cases_both_sexes, -1)
-        .when(l.n_cases_both_sexes == r.n_cases_both_sexes, 0)
-        .when(l.n_cases_both_sexes < r.n_cases_both_sexes, 1)
+        .when(l.n_cases_defined > r.n_cases_defined, -1)
+        .when(l.n_cases_defined == r.n_cases_defined, 0)
+        .when(l.n_cases_defined < r.n_cases_defined, 1)
         .or_missing()
     )
 
@@ -1020,12 +1137,43 @@ def get_icd_min_p_ht(
         mt = load_final_sumstats_table(
             result_type="gene", extension="mt", tranche=tranche
         )
-    icd = mt.filter_cols(mt.trait_type == "icd_first_occurrence")
-    icd = icd.annotate_cols(icd10_group=icd.description.split("first", 2)[0][5])
+
+    icd = mt.filter_cols(
+        hl.literal({"icd10", "icd_first_occurrence"}).contains(mt.trait_type)
+    )
+    icd = icd.annotate_cols(
+        icd10_group=hl.if_else(
+            icd.trait_type == "icd10",
+            icd.phenocode[0],
+            icd.description.split("first", 2)[0][5],
+        ),
+        icd10_index=hl.int32(
+            hl.if_else(
+                icd.trait_type == "icd10",
+                icd.phenocode[1:3],
+                icd.description.split("first", 2)[0][6:8],
+            )
+        ),
+    )
+    icd = icd.annotate_cols(
+        icd10_group=hl.case()
+        .when((icd.icd10_group == "B"), "A")
+        .when((icd.icd10_group == "D") & (icd.icd10_index < 50), "C")
+        .when((icd.icd10_group == "H") & (icd.icd10_index < 60), "H1")
+        .when((icd.icd10_group == "H") & (icd.icd10_index >= 60), "H2")
+        .default(icd.icd10_group)
+    )
     ICD10_GROUPS = icd.aggregate_cols(hl.agg.collect_as_set(icd.icd10_group))
     if result_type == "gene":
         icd = icd.annotate_rows(
             min_p=hl.agg.group_by(icd.icd10_group, hl.agg.min(icd[pvalue]))
+        )
+        icd = icd.select_rows(
+            "interval",
+            **{
+                f"{icd_group}_min_p": icd.min_p.get(icd_group)
+                for icd_group in ICD10_GROUPS
+            },
         )
     else:
         icd = icd.annotate_rows(
@@ -1033,9 +1181,12 @@ def get_icd_min_p_ht(
                 icd.icd10_group, hl.agg.filter(icd.SE != 0, hl.agg.min(icd.Pvalue))
             )
         )
-    icd = icd.annotate_rows(
-        **{f"{icd_group}_min_p": icd.min_p.get(icd_group) for icd_group in ICD10_GROUPS}
-    )
+        icd = icd.select_rows(
+            **{
+                f"{icd_group}_min_p": icd.min_p.get(icd_group)
+                for icd_group in ICD10_GROUPS
+            }
+        )
     return icd.rows()
 
 
@@ -1044,8 +1195,8 @@ def get_pheno_pvalue_ht(
     test_type: str = "skato",
     coding: list = None,
     phenos_to_keep: hl.Table = None,
-    freq_lower: float = None,
-    freq_upper: float = None,
+    freq_min: float = None,
+    freq_max: float = None,
     n_var_min: int = 2,
     coverage_min: int = 20,
     random_phenos: bool = False,
@@ -1057,8 +1208,8 @@ def get_pheno_pvalue_ht(
     :param str test_type: Type of gene-level association test result, `skato` or `burden`
     :param list coding: List of coding used for phenotype filtering
     :param Table phenos_to_keep: Subset of phenotypes to keep, keyed by ['trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier']
-    :param float freq_lower: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
-    :param float freq_upper: Upper bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param float freq_min: Lower bound of allele frequency/cumulative allele frequency used for variant/gene filtering
+    :param float freq_max: Upper bound of allele frequency/cumulative allele frequency used for variant/gene filtering
     :param int n_var_min: Minimum number of variants included in a gene-based test used for gene filtering
     :param int coverage_min: Minimum coverage used for gene filtering
     :param bool random_pheno: Whether to use randomly-generated phenotypes
@@ -1067,7 +1218,7 @@ def get_pheno_pvalue_ht(
     :rtype: Table
     """
     mt = hl.read_matrix_table(
-        get_results_mt_path(result_type, tranche, random_phenos=random_phenos)
+        get_results_mt_path(result_type, tranche=tranche, random_phenos=random_phenos)
     )
     if coding is not None:
         mt = mt.filter_cols(hl.literal(coding).contains(mt.coding))
@@ -1075,17 +1226,17 @@ def get_pheno_pvalue_ht(
         mt = mt.filter_cols(hl.is_defined(phenos_to_keep.index(mt.col_key)))
     if result_type == "gene":  # Gene Info
         mt = annotate_additional_info_mt(
-            result_mt=mt, result_type=result_type, tranche=tranche
+            mt=mt, result_type=result_type, tranche=tranche
         )
-        if freq_lower is not None:
-            mt = mt.filter_rows(mt.CAF > freq_lower)
-        if freq_upper is not None:
-            mt = mt.filter_rows(mt.CAF <= freq_upper)
+        if freq_min is not None:
+            mt = mt.filter_rows(mt.CAF > freq_min)
+        if freq_max is not None:
+            mt = mt.filter_rows(mt.CAF <= freq_max)
         if n_var_min is not None:
             mt = mt.filter_rows(mt.total_variants >= n_var_min)
         if coverage_min is not None:
-            mt = mt.filter_rows(mt.mean_coverage > coverage_min)
-        mt = mt.annotate_rows(CAF_range=f"CAF:({freq_lower}, {freq_upper}]")
+            mt = mt.filter_rows(mt.mean_coverage >= coverage_min)
+        mt = mt.annotate_rows(CAF_range=f"CAF:({freq_min}, {freq_max}]")
         ht = mt.entries()
         pvalue = P_VALUE_FIELDS[test_type.lower()]
         ht = ht.select(pvalue, "CAF_range")
@@ -1099,17 +1250,17 @@ def get_pheno_pvalue_ht(
             mt = mt.explode_rows(mt.annt)
             mt = mt.drop("annotation", "AF")
             mt = mt.annotate_rows(annotation=mt.annt, AF=mt.af)
-        if freq_lower is not None:
-            mt = mt.filter_rows(mt.call_stats.AF > freq_lower)
-        if freq_upper is not None:
-            mt = mt.filter_rows(mt.call_stats.AF <= freq_upper)
+        if freq_min is not None:
+            mt = mt.filter_rows(mt.call_stats.AF > freq_min)
+        if freq_max is not None:
+            mt = mt.filter_rows(mt.call_stats.AF <= freq_max)
         mt = mt.annotate_rows(
             annotation=hl.if_else(
                 hl.literal({"missense", "LC"}).contains(mt.annotation),
                 "missense|LC",
                 mt.annotation,
             ),
-            AF_range=f"AF:({freq_lower}, {freq_upper}]",
+            AF_range=f"AF:({freq_min}, {freq_max}]",
         )
         ht = mt.entries()
         ht = ht.select("Pvalue", "AF_range")
@@ -1143,7 +1294,7 @@ def get_pvalue_by_freq_interval_ht(
         result_type=result_type,
         test_type=test_type,
         phenos_to_keep=phenos_to_keep,
-        freq_lower=freq_breaks[-1],
+        freq_min=freq_breaks[-1],
         n_var_min=n_var_min,
         coverage_min=coverage_min,
         random_phenos=random_phenos,
@@ -1154,8 +1305,8 @@ def get_pvalue_by_freq_interval_ht(
             result_type=result_type,
             test_type=test_type,
             phenos_to_keep=phenos_to_keep,
-            freq_lower=freq_breaks[i],
-            freq_upper=freq_breaks[i + 1],
+            freq_min=freq_breaks[i],
+            freq_max=freq_breaks[i + 1],
             n_var_min=n_var_min,
             coverage_min=coverage_min,
             random_phenos=random_phenos,
@@ -1167,7 +1318,7 @@ def get_pvalue_by_freq_interval_ht(
             result_type=result_type,
             test_type=test_type,
             phenos_to_keep=phenos_to_keep,
-            freq_upper=freq_breaks[0],
+            freq_max=freq_breaks[0],
             n_var_min=n_var_min,
             coverage_min=coverage_min,
             random_phenos=random_phenos,
@@ -1231,61 +1382,76 @@ def add_liftover_rg37_to_rg38_ht(ht: hl.Table):
 
 
 def annotate_additional_info_mt(
-    result_mt: hl.MatrixTable, result_type: str = "gene", tranche: str = CURRENT_TRANCHE
+    mt: hl.MatrixTable,
+    result_type: str = "gene",
+    expected_AC_only: bool = False,
+    expected_AC_min: int = 50,
+    tranche: str = CURRENT_TRANCHE,
 ):
     """
     Attach additional information to the original gene/variant-level sumstats MatrixTable
-    :param MatrixTable result_mt: sumstats MatrixTable to annotate informtaion to
+    :param MatrixTable mt: sumstats MatrixTable to annotate informtaion to
     :param str result_type: Type of association test result, `gene` or `variant`
+    :param bool expected_AC_only: only annotate expected AC for variant results.
+    :param int expected_AC_min: the lower bound used to remove genes/variants with 0 phenotypes having expected AC greater than this.
     :param str tranche: Tranche of data to use
     :return: Hail MatrixTable with updated information
     :rtype: hl.MatrixTable
     """
+    case_field = "n_cases_defined" if tranche == "500k" else "n_cases"
     if result_type == "gene":
-        af = hl.read_table(get_util_info_path("caf", tranche))
-        coverage_ht = hl.read_table(get_util_info_path("coverage", tranche))
-        mt = result_mt.annotate_rows(
-            CAF=af[result_mt.annotation, result_mt.gene_id]["CAF"],
-            mean_coverage=coverage_ht[result_mt.row_key].mean_coverage,
+        caf_ht = hl.read_table(get_util_info_path("caf", tranche=tranche))
+        coverage_ht = hl.read_table(get_util_info_path("coverage", tranche=tranche))
+        mt = mt.annotate_rows(
+            CAF=caf_ht[mt.annotation, mt.gene_id]["CAF"],
+            mean_coverage=coverage_ht[mt.row_key].mean_coverage,
         )
+        mt = mt.annotate_entries(expected_AC=mt.CAF * mt[case_field])
     else:
-        clinvar_ht = annotate_clinvar_pathogenicity_ht()
+        if tranche == "500k":
+            mt = mt.annotate_entries(expected_AC=mt.call_stats.AF * mt[case_field])
+        else:
+            mt = mt.annotate_entries(expected_AC=mt.AF * mt[case_field])
+        if not expected_AC_only:
+            clinvar_ht = annotate_clinvar_pathogenicity_ht()
 
-        ht = hl.read_table(
-            "gs://gcp-public-data--gnomad/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021520.ht"
-        )
-        ht = ht.explode(ht.tx_annotation)
-        ht = add_liftover_rg37_to_rg38_ht(ht)
+            ht = hl.read_table(
+                "gs://gcp-public-data--gnomad/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021520.ht"
+            )
+            ht = ht.explode(ht.tx_annotation)
+            ht = add_liftover_rg37_to_rg38_ht(ht)
 
-        vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
-        vep = process_consequences(vep)
-        vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
-        vep = vep.annotate(
-            tx_annotation_csq=ht[vep.key].tx_annotation.csq,
-            mean_proportion=ht[vep.key].tx_annotation.mean_proportion,
-        )
-        mt = result_mt.annotate_rows(
-            pathogenicity=clinvar_ht[result_mt.locus, result_mt.alleles][
-                "pathogenicity"
-            ],
-            annotation=hl.if_else(
-                hl.literal({"missense", "LC"}).contains(result_mt.annotation),
-                "missense|LC",
-                result_mt.annotation,
-            ),
-            polyphen2=vep[
-                result_mt.row_key
-            ].vep.worst_csq_by_gene_canonical.polyphen_prediction,
-            amino_acids=vep[
-                result_mt.row_key
-            ].vep.worst_csq_by_gene_canonical.amino_acids,
-            lof=vep[result_mt.row_key].vep.worst_csq_by_gene_canonical.lof,
-            most_severe_consequence=vep[
-                result_mt.row_key
-            ].vep.worst_csq_by_gene_canonical.most_severe_consequence,
-            tx_annotation_csq=vep[result_mt.row_key].tx_annotation_csq,
-            mean_proportion_expressed=vep[result_mt.row_key].mean_proportion,
-        )
+            vep = hl.read_table(var_annotations_ht_path("vep", *TRANCHE_DATA[tranche]))
+            vep = process_consequences(vep)
+            vep = vep.explode(vep.vep.worst_csq_by_gene_canonical)
+            vep = vep.annotate(
+                tx_annotation_csq=ht[vep.key].tx_annotation.csq,
+                mean_proportion=ht[vep.key].tx_annotation.mean_proportion,
+            )
+            mt = mt.annotate_rows(
+                pathogenicity=clinvar_ht[mt.locus, mt.alleles]["pathogenicity"],
+                annotation=hl.if_else(
+                    hl.literal({"missense", "LC"}).contains(mt.annotation),
+                    "missense|LC",
+                    mt.annotation,
+                ),
+                polyphen2=vep[
+                    mt.row_key
+                ].vep.worst_csq_by_gene_canonical.polyphen_prediction,
+                amino_acids=vep[mt.row_key].vep.worst_csq_by_gene_canonical.amino_acids,
+                lof=vep[mt.row_key].vep.worst_csq_by_gene_canonical.lof,
+                most_severe_consequence=vep[
+                    mt.row_key
+                ].vep.worst_csq_by_gene_canonical.most_severe_consequence,
+                tx_annotation_csq=vep[mt.row_key].tx_annotation_csq,
+                mean_proportion_expressed=vep[mt.row_key].mean_proportion,
+            )
+    mt = mt.annotate_rows(
+        expected_ac_row_filter=hl.agg.count_where(mt.expected_AC >= expected_AC_min)
+    )
+    mt = mt.annotate_cols(
+        expected_ac_col_filter=hl.agg.count_where(mt.expected_AC >= expected_AC_min)
+    )
     return mt
 
 
@@ -1348,21 +1514,24 @@ def get_qc_result_mt(
         mt = mt.filter_rows(
             mt[f"keep_gene_{test_type.lower()}"]
             & mt.keep_gene_coverage
-            & mt.keep_gene_caf
+            & mt.keep_gene_expected_ac
             & mt.keep_gene_n_var
         )
     else:
-        mt = mt.filter_rows(mt.keep_var_af & mt.keep_var_annt)
+        mt = mt.filter_rows(mt.keep_var_expected_ac & mt.keep_var_annt)
     return mt
 
 
-def modify_phenos_mt(mt: hl.MatrixTable):
+def modify_phenos_mt(result_type):
     """
     Modify and remove phenotypes from the original result Matrixtable
-    :param MatrixTable mt: Input original result Matrixtable
+    :param str result_type: Type of association test result, `gene` or `variant`
     :return: Hail MatrixTable with phenotypes removed
     :rtype: hl.MatrixTable
     """
+    mt = hl.read_matrix_table(
+        f"{bucket}/{CURRENT_TRANCHE}/results/{'' if result_type=='gene' else 'variant_'}results.mt"
+    )
     mt = drop_pheno_fields_mt(mt)
     mt = mt.filter_cols(
         (mt.n_cases_defined >= 100)
@@ -1398,7 +1567,8 @@ def modify_phenos_mt(mt: hl.MatrixTable):
     )
 
     import random
-    random.seed()
+
+    random.seed(2022)
     alz_order = [1, 2]
     random.shuffle(alz_order)
     ibd_order = [1, 2]
@@ -1451,22 +1621,25 @@ def drop_pheno_fields_mt(mt: hl.MatrixTable):
     return mt.drop("Abbvie_Priority", "Biogen_Priority", "Pfizer_Priority", "score")
 
 
-def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75):
+def annotate_pheno_qc_metric_mt(
+    mt: hl.MatrixTable, lambda_min: float = 0.75, tranche: str = CURRENT_TRANCHE
+):
     """
     Annotate QC metrics to phenotype table
     :param MatrixTable mt: Input original result Matrixtable
-    :param float lambda_lower: Lower bound of lambda GC
+    :param float lambda_min: Lower bound of lambda GC
+    :param str tranche: Tranche of data to use
     :return: Hail MatrixTable with phenotype QC metrics
     :rtype: MatrixTable
     """
     pheno_corr = hl.read_table(
         get_ukb_exomes_sumstat_path(
-            subdir="qc", dataset="correlated", result_type="phenos"
+            subdir="qc", dataset="correlated", result_type="phenos", tranche=tranche
         )
     )
     mt = mt.annotate_cols(
         **{
-            f"keep_pheno_{test}": (mt[f"lambda_gc_{test}"] > lambda_lower)
+            f"keep_pheno_{test}": (mt[f"lambda_gc_{test}"] > lambda_min)
             for test in TESTS
         },
         keep_pheno_unrelated=hl.is_missing(
@@ -1478,30 +1651,90 @@ def annotate_pheno_qc_metric_mt(mt: hl.MatrixTable, lambda_lower: float = 0.75):
     return mt
 
 
-def annotate_gene_qc_metric_mt(
-    mt: hl.MatrixTable,
-    lambda_lower: float = 0.75,
-    caf_lower: float = 0.0001,
+def annotate_qc_metric_mt(
+    result_type: str,
+    lambda_min: float = 0.75,
     coverage_min: int = 20,
+    expected_AC_min: int = 50,
     n_var_min: int = 2,
+    tranche: str = CURRENT_TRANCHE,
 ):
     """
     Annotate QC metrics to gene table
-    :param MatrixTable mt: Input original result Matrixtable
-    :param float lambda_lower: Lower bound of synonymous lambda GC
-    :param float caf_lower: lower bound of cumulative allele frequency
-    :param int n_var_min: Minimum number of variants
+    :param str result_type: Type of association test result, `gene` or `variant`
+    :param float lambda_min: Lower bound of synonymous lambda GC
     :param int coverage_min: Minimum coverage
+    :param int expected_AC_min: the lower bound used to remove genes/variants with 0 phenotypes having expected AC greater than this.
+    :param int n_var_min: Minimum number of variants
+    :param str tranche: Tranche of data to use
     :return: Hail MatrixTable with gene QC metrics
     :rtype: MatrixTable
     """
-    mt = mt.annotate_rows(
-        **{
-            f"keep_gene_{test}": (mt[f"synonymous_lambda_gc_{test}"] > lambda_lower)
-            for test in TESTS
-        },
-        keep_gene_coverage=mt.mean_coverage > coverage_min,
-        keep_gene_caf=mt.CAF > caf_lower,
-        keep_gene_n_var=mt.total_variants >= n_var_min,
+    mt = hl.read_matrix_table(
+        get_results_mt_path(result_type=result_type, tranche=tranche)
     )
+    mt = annotate_additional_info_mt(
+        mt,
+        result_type=result_type,
+        expected_AC_only=True,
+        expected_AC_min=expected_AC_min,
+        tranche=tranche,
+    )
+    pheno_lambda = hl.read_table(
+        get_ukb_exomes_sumstat_path(
+            subdir="qc/lambda_gc",
+            dataset="lambda_by_pheno_full_filtered",
+            tranche=tranche,
+        )
+    )
+    pheno_lambda = pheno_lambda.select(*{f"lambda_gc_{test}" for test in TESTS})
+    mt = mt.annotate_cols(**pheno_lambda[mt.col_key])
+    if result_type == "gene":
+        gene_lambda = hl.read_table(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc/lambda_gc",
+                dataset="lambda_by_gene",
+                result_type="",
+                tranche=tranche,
+            )
+        )
+        gene_lambda = gene_lambda.rename(
+            {f"all_lambda_gc_{test}": f"annotation_lambda_gc_{test}" for test in TESTS}
+        )
+        gene_lambda = gene_lambda.drop(*{f"lambda_gc_{test}" for test in TESTS})
+        for test in TESTS:
+            gene_lambda = annotate_synonymous_lambda_ht(gene_lambda, test)
+
+        mt = mt.annotate_rows(**gene_lambda[mt.row_key])
+        mt = mt.annotate_rows(
+            **{
+                f"keep_gene_{test}": (mt[f"synonymous_lambda_gc_{test}"] > lambda_min)
+                for test in TESTS
+            },
+            keep_gene_coverage=mt.mean_coverage >= coverage_min,
+            keep_gene_expected_ac=mt.expected_ac_row_filter > 0,
+            keep_gene_n_var=mt.total_variants >= n_var_min,
+        )
+        mt = mt.annotate_globals(
+            coverage_min=coverage_min,
+            expected_AC_min=expected_AC_min,
+            n_var_min=n_var_min,
+            gene_syn_lambda_min=lambda_min,
+        )
+    else:
+        mt = mt.annotate_rows(
+            annotation=hl.if_else(
+                hl.literal({"missense", "LC"}).contains(mt.annotation),
+                "missense|LC",
+                mt.annotation,
+            ),
+            keep_var_expected_ac=mt.expected_ac_row_filter > 0,
+            keep_var_annt=hl.is_defined(mt.annotation),
+        )
+        mt = mt.annotate_globals(
+            expected_AC_min=expected_AC_min,
+        )
+    mt = annotate_pheno_qc_metric_mt(mt, lambda_min=lambda_min)
+    mt = mt.annotate_globals(pheno_lambda_min=lambda_min)
+
     return mt

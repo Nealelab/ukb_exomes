@@ -1,6 +1,6 @@
 
 
-CURRENT_TRANCHE = '300k'
+CURRENT_TRANCHE = '500k'
 TRANCHE_PHENO_DATA = {
     '100k': 'January_2019',
     '200k': 'November_2019',
@@ -11,7 +11,8 @@ TRANCHE_PHENO_DATA = {
 TRANCHE_DATA = {
     '100k': ('regeneron', 4),
     '200k': ('broad', 5),
-    '300k': ('broad', 6)
+    '300k': ('broad', 6),
+    '500k': ('broad', 6)
 }
 
 BUCKETS = {'300k': 'gs://ukbb-pharma-exome-analysis-300k',
