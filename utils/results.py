@@ -5,17 +5,13 @@ from ukbb_common import *
 from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.vep import process_consequences
 from ..resources import *
-import logging
+
 
 ANNOTATIONS = ("pLoF", "missense|LC", "synonymous", "pLoF|missense|LC")
 TESTS = ("skato", "skat", "burden")
 TRAIT_TYPES = ("continuous", "categorical", "icd10")
 P_VALUE_FIELDS = {"skato": "Pvalue", "skat": "Pvalue_SKAT", "burden": "Pvalue_Burden"}
 EMPIRICAL_P_THRESHOLDS = {"skato": 2.5e-7, "burden": 6.7e-7, "variant": 8e-9}
-
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger(f"UKB {CURRENT_TRANCHE} exomes")
-logger.setLevel(logging.INFO)
 
 
 def get_ukb_exomes_sumstat_path(
