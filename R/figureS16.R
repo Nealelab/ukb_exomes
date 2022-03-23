@@ -3,9 +3,10 @@ detach(package:plyr)
 output_path = '~/Desktop/final_figures/'
 
 figureS16 = function(save_plot = F, filter = T, output_path){
-  corr = load_ukb_file('pheno_correlation_before_filter_300k.txt.bgz', subfolder = 'qc/')
+  corr = load_ukb_file(paste0('pheno_correlation_before_filter_', tranche,'.txt.bgz'), subfolder = 'qc/')
   count = data.frame(
-    Count = c(1271, 1024, 869, 723, 602, 474, 333, 209, 90), # Generated from https://github.com/Nealelab/ukb_exomes/hail/summary_statistics_analysis.py#L30
+    # pickle.load(open('pheno_correlated_cnt_list_500k', 'rb'))
+    Count = c(1391, 1118, 917, 774, 640, 503, 349, 219, 95), # Generated from https://github.com/Nealelab/ukb_exomes/hail/analysis.py#L30
     Corr = seq(0.1, 0.9, 0.1))
 
   corr = corr %>% filter(i != j)

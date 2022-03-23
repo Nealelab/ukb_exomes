@@ -1,9 +1,12 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/final_figures/'
 
 figureS15 = function(save_plot = F, output_path){
-  lambda_by_gene = load_ukb_file('lambda_by_gene_filtered_300k.txt.bgz', subfolder = 'qc/lambda_gc/')
+  lambda_by_gene = load_ukb_file(paste0('lambda_by_gene_filtered_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+  if(tranche == '500k'){
+    lambda_by_gene = lambda_by_gene %>%
+      filter(annotation != 'pLoF|missense|LC')
+  }
   lambda_by_gene = lambda_by_gene %>%
     select(-c(6:8)) %>%
     pivot_longer_lambda_data()%>%
@@ -20,6 +23,7 @@ figureS15 = function(save_plot = F, output_path){
     filter(trait_type == 'all') %>%
     ggplot + aes(x = lambda_gc, color = annotation, fill = annotation) +
     geom_density(alpha = 0.5) + theme_classic() +
+    # geom_bar(alpha = 0.5, position = position_dodge()) + theme_classic() +
     labs(x = 'Gene Lambda GC', y = 'Density') +
     geom_vline(xintercept = 1, lty = 2) +
     annotation_color_scale + annotation_fill_scale + themes +

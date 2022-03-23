@@ -3,8 +3,9 @@ detach(package:plyr)
 output_path = '~/Desktop/final_figures/'
 
 figureS17 = function(type = 'full', save_plot = F, output_path){
-  height_UKB  = load_ukb_file('height_beta.txt.bgz', subfolder = 'analysis/', force_cols = cols(locus = col_character())) %>%
-    separate(markerID, c("chrom", "position", "REF", "ALT"), sep = "[^[:alnum:]]")
+  height_UKB  = load_ukb_file('height_beta_500k.txt.bgz', subfolder = 'analysis/', force_cols = cols(locus = col_character())) %>%
+    separate(markerID, c("chrom", "position", "REF", "ALT"), sep = "[^[:alnum:]]") %>%
+    mutate(locus = new_locus)
 
   if(type == 'full'){
     download.file("https://portals.broadinstitute.org/collaboration/giant/images/5/59/Height_All_add_SV.txt.gz", 'giant_height.txt.gz')
@@ -25,7 +26,7 @@ figureS17 = function(type = 'full', save_plot = F, output_path){
     ggplot + aes(x = beta_giant, y = beta_ukb, color = -log10(AF)) +
     geom_point(alpha = 0.8, position = 'jitter') +
     geom_abline(intercept = 0, slope = 1, lty = 2) +
-    labs(y = "UK Biobank 300k", x = "GIANT", color = expression(bold(paste('-log'[10], '(AF)')))) +
+    labs(y = "UK Biobank 450k", x = "GIANT", color = expression(bold(paste('-log'[10], '(AF)')))) +
     theme_classic() + themes +
     guides(color = guide_legend(override.aes = list(size = 5, pch = 19, alpha = 1) ) )
 
