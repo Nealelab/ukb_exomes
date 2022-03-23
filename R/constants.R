@@ -1,4 +1,4 @@
-packages = c('dplyr', 'GGally', 'reshape2', 'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 'grid', 
+packages = c('dplyr', 'GGally', 'reshape2', 'data.table', 'scales', 'Matrix', 'ggplot2', 'extrafont', 'gridExtra', 'grDevices', 'grid',
               'RCurl', 'trelliscopejs', 'tidyverse', 'Hmisc', 'devtools', 'broom', 'plotly', 'slackr', 'magrittr', 'gapminder', 'readr', 
               'purrr', 'skimr', 'gganimate', 'gghighlight', 'plotROC', 'naniar', 'BiocManager', 'cowplot', 'corrplot', 'corrr', 'ggridges', 'RColorBrewer', 
               'ggpubr', 'meta', 'tidygraph', 'pbapply', 'RMySQL', 'egg', 'ggwordcloud', 'patchwork', 'ggrastr', 'ggthemes', 'STRINGdb', 'ggrepel', 'LowMACA')
@@ -16,23 +16,39 @@ for(p in packages){
 # devtools::install_github('thomasp85/patchwork')
 source('~/ukbb_pan_ancestry/constants.R')
 
+tranche = '500k'
+test = 'skato'
+path_to = '~/Desktop/ukb_exomes_450k/'
+output = '~/Desktop/ukb_exomes_450k/'
+output_path = '~/Desktop/ukb_exomes_450k/'
+
+
+
+trait_types = c("continuous", "categorical", "icd10")
+trait_type_colors = c('#d56f3e', '#43aa8b', '#b594b6')
+names(trait_type_colors) = trait_types
+trait_type_names = c('Continuous', 'Binary', 'Disease (ICD)')
+names(trait_type_names) = trait_types
+trait_type_colors['hide'] = 'gray'
+trait_color_scale = scale_color_manual(breaks = trait_types, values=trait_type_colors, name='Trait type', labels=trait_type_names)
+trait_fill_scale = scale_fill_manual(breaks = trait_types, values=trait_type_colors, name='Trait type', labels=trait_type_names)
+
 annotation_types = c('pLoF', 'missense|LC', 'synonymous')
 annotation_names = c('pLoF', 'Missense', 'Synonymous')
 result_types = c('skato', 'skat', 'burden')
 result_names = c('SKAT-O', 'SKAT', 'Burden Test')
 af_types = c('AF:(None, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, None]')
-af_names = c('AF:( , 0.0001]', 'AF:(, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-5, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', 'AF:(0.1, )')
+af_names = c('AF:(', bquote("-\U221E"), ' , 0.0001]', 'AF:(, 2e-05]', 'AF:(2e-05, 0.001]', 'AF:(2e-5, 0.0001]', 'AF:(0.0001, 0.001]', 'AF:(0.001, 0.01]', 'AF:(0.01, 0.1]', paste0('AF:(0.1, ', bquote("\U221E"), ' )'))
 caf_types = c('CAF:(None, 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, None]')
-caf_names = c('CAF:( , 0.0001]', 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', 'CAF:(0.1, )')
-ac_types = c('0', '1', '10', '100', '1000', '10000', '100000')
-ac_names = c('Expected AC:( , 1]', 'Expected AC:(1, 10]', 'Expected AC:(10, 100]', 
-             'Expected AC:(100 , 1000]', 'Expected AC:(1000, 10000]', 'Expected AC:(10000, 100000]', 'Expected AC:(100000, )')
+caf_names = c(paste0('CAF:[0 , 0.0001]'), 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.01]', 'CAF:(0.01, 0.1]', paste0('CAF:(0.1, ', bquote("\U221E"), ' )'))
+ac_types = c('(0, 5]', '(5, 50]', '(50, 500]', '(500, 5000]', '(5000, 50000]', '(50000, )')
+ac_names = c('(0, 5]', '(5, 50]', '(50, 500]', '(500, 5000]', '(5000, 50000]', paste0('(50000, ', bquote("\U221E"), ' )'))
 gene_list_names = c('Constrained' = 'Constrained', 'Developmental Delay' = 'Developmental\nDelay', 'all_ad' = 'Autosomal dominant', 'all_ar' = 'Autosomal recessive', 
                     'fda_approved_drug_targets' = 'FDA approved\ndrug targets', 'gwascatalog' = 'GWAS catalog', 'CEGv2_subset_universe' = 'Cell essential', 'NEGv1_subset_universe' = 'Cell non-essential')
-icd_names = c('A' = 'Infectious', 'C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H' = 'Eye', 'I' = 'Circulatory', 
-              'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy', 'P' = 'Perinatal', 'Q' = 'Congenital')
+icd_names = c('A' = 'Infectious', 'B' = 'Infectious','C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H1' = 'Eye',
+              'H2' =  'Ear', 'I' = 'Circulatory', 'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy',
+              'P' = 'Perinatal', 'Q' = 'Congenital', 'R' = 'Symptoms', 'S' = 'Injury/poison', 'T' = 'Injury/poison', 'V' = 'External causes', 'Y' = 'External causes', 'Z' = 'Health Factors')
 random_pheno_subset = c('random_1e-04', 'random_0.001', 'random_0.01', 'random_0.05', 'random_0.1', 'random_0.2', 'random_0.5', 'random_continuous')
-af_int = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')
 polyphen2_levels = c('benign', 'possibly_damaging', 'probably_damaging')
 polyphen2_labels = c('Benign', 'Possibly Damaging', 'Probably Damaging')
 
@@ -47,6 +63,9 @@ qual_col_pals = brewer.pal.info %>% filter(category == 'qual')
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 set.seed(2)
 manhattan_color = sample(col_vector[14:29], 16, replace = F)
+icd_colors = c('A' = '#B2341E', 'B' = '#B2341E','C' = '#DC632C', 'D' = '#AFA148', 'E' = '#808080', 'F' = '#90BEBE', 'G' = '#B07F80', 'H1' = '#841E62',
+               'H2' =  '#8EA870', 'I' = '#364C63', 'J' = '#504F1F', 'K' = '#CA7D05', 'L' = '#709DE2', 'M' = '#002FA7', 'N' = '#FBC9BE', 'O' = '#EDB235',
+               'P' = '#4C0009', 'Q' = '#C4AE94', 'R' = '#CCE1F4', 'S' = '#97A1CD', 'T' = '#97A1CD', 'V' = '#A96BA6', 'Y' = '#A96BA6', 'Z' = '#4E8717')
 annotation_color_scale = scale_colour_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 annotation_fill_scale = scale_fill_manual(name = 'Annotation', values = colors, breaks = annotation_types, labels = annotation_names)
 themes = theme(plot.title = element_text(hjust = 0.5, color = 'Black', size = 10, face = 'bold'),
@@ -80,18 +99,30 @@ get_coverage_interval = function(coverage){
     coverage <= 30  ~ '(20, 30]', 
     coverage <= 40  ~ '(30, 40]', 
     coverage <= 50  ~ '(40, 50]', 
-    coverage > 50  ~ '(50, )', 
+    coverage > 50  ~ '(50, )',
   )
   return(interval)
 }
 
 get_freq_interval = function(freq){
   interval = case_when(
-    freq <= 1e-4  ~ paste0('[', scientific(min(freq), digits = 0), ', 0.0001]'), 
+    freq <= 1e-4  ~ '[0, 0.0001]',
     freq <= 1e-3  ~ '(0.0001, 0.001]', 
     freq <= 1e-2  ~ '(0.001, 0.01]', 
     freq <= 1e-1  ~ '(0.01, 0.1]', 
-    freq > 1e-1  ~ '(0.1, )', 
+    freq > 1e-1  ~ '(0.1, 1]',
+  )
+  return(interval)
+}
+
+get_freq_interval_500k = function(freq){
+  interval = case_when(
+    freq <= 1e-4  ~ '[0, 0.0001]',
+    freq <= 1e-3  ~ '(0.0001, 0.001]',
+    freq <= 5e-3  ~ '(0.001, 0.005]',
+    freq <= 1e-2  ~ '(0.005, 0.01]',
+    freq <= 1e-1  ~ '(0.01, 0.1]',
+    freq > 1e-1  ~ '(0.1, )',
   )
   return(interval)
 }
@@ -107,7 +138,7 @@ get_mean_prop_interval = function(mean_proportion){
 
 
 get_ukb_data_url = function() {
-  return(paste0('https://storage.googleapis.com/ukbb-exome-public/300k/'))
+  return(paste0('https://storage.googleapis.com/ukbb-exome-public/',tranche,'/'))
 }
 
 
@@ -118,7 +149,7 @@ get_coverage_interval = function(coverage){
     coverage <= 30  ~ '(20, 30]', 
     coverage <= 40  ~ '(30, 40]', 
     coverage <= 50  ~ '(40, 50]', 
-    coverage > 50  ~ '(50, )', 
+    coverage > 50  ~ '(50, )',
   )
   return(interval)
 }
@@ -218,6 +249,7 @@ save_group_matched_figure2 = function(matched_summary, levels, labels, group_col
     scale_y_continuous(label = label_percent(accuracy = 1)) +
     scale_x_discrete(labels = levels) +
     theme_classic() + themes +
+    facet_grid(~interval) +
     guides(color = guide_legend(nrow = 3) )
   if(save_plot){
     png(output_path, height = 4, width = 6, units = 'in', res = 300)
@@ -270,7 +302,7 @@ save_subset_matched_figure2 = function(matched_summary, matched_test, save_plot 
         legend.text = element_text(size = 13),
         legend.title = element_text(size = 13),
         axis.title = element_text(size = 13)) +
-    geom_text(data = matched_test, aes(x = 4-as.numeric(annotation), y = 0.18, label = sig_label), size = 6)
+    geom_text(data = matched_test, aes(x = 4-as.numeric(annotation), y = pos, label = sig_label), size = 6)
   if(save_plot){
     png(output_path, height = 10, width = 5, units = 'in', res = 300)
     print(plt)
@@ -417,27 +449,35 @@ match_gene_set_multi_sample = function(gene_list, id_col = 'gene_symbol', sig_co
   return(matched_sum)
 }
 
-get_var_gene_overlap_count = function(data = var_gene_by_pheno, pheno_group = 'all', normalize = T, print = F){
-  pheno_set = pheno_group
-  if(pheno_set == 'all'){pheno_set = c('categorical', 'continuous', 'icd_first_occurrence')}
-  pheno_group = if_else(pheno_group == 'icd_first_occurrence', 'icd10', pheno_group)
-  data = data %>% filter(trait_type %in% pheno_set)
+get_var_gene_overlap_count = function(data = var_gene_by_pheno, type = 'pheno', group = 'all', normalize = T, print = F){
+  full_set = group
+  label = if_else(type== 'pheno', 'pheno_', '')
+  if(type == 'pheno'){
+    if(full_set == 'all'){full_set = c('categorical', 'continuous', 'icd10')}
+    group = if_else(group == 'icd_first_occurrence', 'icd10', group)
+    data = data %>%
+      mutate(trait_type = if_else(trait_type == 'icd_first_occurrence', 'icd10', trait_type)) %>%
+      filter(trait_type %in% full_set)
+  }else{
+    if(full_set == 'all'){full_set = c('missense|LC', 'pLoF', 'synonymous')}
+    data = data %>% filter(annotation %in% full_set)
+  }
   n = if_else(normalize, nrow(data), as.integer(1))
   if(print){
-    print(paste('Significant associations for', pheno_group, 'Phenotypes'))
-    print(paste('Both gene and variant: ', sum(data %>% select(pheno_gene_var_sig_cnt))/n))
-    print(paste('Gene only: ', sum(data %>% select(pheno_gene_sig_cnt))/n))
-    print(paste('Variant only: ', sum(data %>% select(pheno_var_sig_cnt))/n))
-    print(paste('Neither gene nor variant: ', sum(data %>% select(pheno_none_sig_cnt))/n))
+    print(paste('Significant associations for', group, if_else(type=='pheno', 'phenotypes', 'groups')))
+    print(paste('Both gene and variant: ', sum(data %>% select(get(paste0(label, 'gene_var_sig_cnt'))))/n))
+    print(paste('Gene only: ', sum(data %>% select(get(paste0(label, 'gen_sig_cnt'))))/n))
+    print(paste('Variant only: ', sum(data %>% select(get(paste0(label, 'var_sig_cnt'))))/n))
+    print(paste('Neither gene nor variant: ', sum(data %>% select(get(paste0(label, 'none_sig_cnt'))))/n))
   }
   return(data.frame(
-    significant_by_gene = c(T, F, T, F), 
-    significant_by_variant = c(T, T, F, F), 
-    value = c(sum(data %>% select(pheno_gene_var_sig_cnt))/n, 
-              sum(data %>% select(pheno_var_sig_cnt))/n, 
-              sum(data %>% select(pheno_gene_sig_cnt))/n, 
-              sum(data %>% select(pheno_none_sig_cnt))/n ), 
-    category = rep(pheno_group, 4), 
+    significant_by_gene = c(T, F, T, F),
+    significant_by_variant = c(T, T, F, F),
+    value = c(sum(data %>% select(paste0(label, 'gene_var_sig_cnt')))/n,
+              sum(data %>% select(paste0(label, 'var_sig_cnt')))/n,
+              sum(data %>% select(paste0(label, 'gene_sig_cnt')))/n,
+              sum(data %>% select(paste0(label, 'none_sig_cnt')))/n ),
+    category = rep(group, 4),
     label = c('Significant by both', 'Significant by variant', 'Significant by gene', 'None')))
 }
 
@@ -455,7 +495,19 @@ format_sig_cnt_summary_data = function(data, pheno_group = 'all', freq_col = 'CA
     mutate(interval = get_freq_interval(get(freq_col))) %>%
     group_by(interval, annotation) %>% sig_cnt_summary(sig_col) %>%
     mutate(annotation = factor(annotation, levels = annotation_types), 
-           interval = factor(interval, levels = c('[2e-05, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')))
+           interval = factor(interval,
+                             levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', if_else(freq_col =='CAF', paste0('(0.1, ', bquote("\U221E"), ' )'),'(0.1, 1]'))))
+  return(data)
+}
+
+format_sig_cnt_summary_data_500k = function(data, pheno_group = 'all', freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt'){
+  data = data %>%
+    mutate(interval = get_freq_interval_500k(get(freq_col))) %>%
+    group_by(interval, annotation) %>% sig_cnt_summary(sig_col) %>%
+    mutate(annotation = factor(annotation, levels = annotation_types),
+           interval = factor(interval, levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.005]', '(0.005, 0.01]', '(0.01, 0.1]', '(0.1, )'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.005]', '(0.005, 0.01]', '(0.01, 0.1]', if_else(freq_col =='CAF', paste0('(0.1, ', bquote("\U221E"), ' )'),'(0.1, 1]'))))
   return(data)
 }
 
@@ -463,10 +515,15 @@ format_count_by_freq_data = function(data, freq_col = 'CAF'){
   data = data %>%
     mutate(interval = get_freq_interval(get(freq_col))) %>%
     group_by(interval, annotation) %>% summarise(cnt = n()) %>%
-    mutate(interval = factor(interval, levels = c('(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )')),
+    mutate(interval = factor(interval, levels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, 1]'),
+                             labels = c('[0, 0.0001]', '(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', if_else(freq_col =='CAF', paste0('(0.1, ', bquote("\U221E"), ' )'),'(0.1, 1]'))),
            annotation = factor(annotation, levels = annotation_types))
+    # mutate(interval = factor(interval, levels = c('(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', '(0.1, )'),
+    #                          labels = c('(0.0001, 0.001]', '(0.001, 0.01]', '(0.01, 0.1]', paste0('(0.1, ', bquote("\U221E"), ' )'))),
+    #        annotation = factor(annotation, levels = annotation_types))
   return(data)
 }
+
 
 format_random_pheno_p_data = function(data, test_type = 'SKAT-O'){
   freq_col = if_else(test_type == 'Single-Variant', 'af', 'CAF_range')
@@ -484,6 +541,14 @@ format_random_pheno_p_data = function(data, test_type = 'SKAT-O'){
   return(data)
 }
 
+format_variant_call_stats = function(data){
+  data = data %>%
+  mutate(AF = as.numeric(strsplit(call_stats, '[:,]') %>% map_chr(., 4)),
+         AC = as.numeric(strsplit(call_stats, '[:,]') %>% map_chr(., 2)))
+  return(data)
+}
+
+
 save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing = 3, sig_level, save_plot = F, output_path){
    icd_labels = sort(deframe(data %>% distinct(icd10)))
    ctr = ((1:length(icd_labels))-1) * (width +spacing) + width/2
@@ -492,14 +557,14 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
      group_by(icd10) %>%
      arrange(chr, as.integer(position)) %>%
      mutate(pos = seq(0, width, length.out = n()) + (icd_ind-1)*(width+spacing),
-            icd10 = factor(icd10, levels = names(icd_names), labels = icd_names))
+            icd10 = factor(icd10, levels = names(icd_names)))
   icd_mh_plt = data %>%
     filter(min_p < p_filter) %>%
     ggplot + aes(x = pos, y = -log10(min_p), color = icd10) +
     geom_point(size = 0.75) +
     geom_hline(yintercept = -log10(sig_level), lty = 2)+
     scale_x_continuous(breaks = ctr, labels = icd_names[icd_labels]) +
-    scale_color_manual(values = manhattan_color) +
+    scale_color_manual(values = icd_colors) +
     scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
     labs(x = NULL, y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
     theme_classic()   + themes +
@@ -541,6 +606,30 @@ save_prop_by_annt_freq_figure = function(matched_summary, output_path, save_plot
   return(plt)
 }
 
+save_prop_by_annt_freq_figure_500k = function(matched_summary, output_path, save_plot = F){
+  plt = matched_summary %>%
+      filter(interval %in% c('[0, 0.0001]','(0.0001, 0.001]', '(0.001, 0.005]','(0.005, 0.01]')) %>%
+      ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
+      geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
+      labs(y = 'Proportion', x = NULL)  +
+      scale_y_continuous(label = label_percent(accuracy = 1)) +
+      scale_x_discrete(labels = annotation_names) +
+      annotation_color_scale + annotation_fill_scale  +
+      facet_grid(~interval, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) + theme_classic() + themes+
+      theme(panel.spacing = unit(0, "lines"),
+            strip.background = element_blank(),
+            strip.placement = "outside",
+            strip.text = element_text(face = 'bold'),
+            axis.text= element_text(size = 10),
+            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
+  if(save_plot){
+    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    print(plt)
+    dev.off()
+  }
+  return(plt)
+}
+
 save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_path){
   plt = cnt_data %>%
     filter(type == cnt_type) %>%
@@ -567,6 +656,10 @@ save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_p
 
 save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path){
   freq = if_else(type == 'Groups', 'CAF', 'AF')
+  if(type == 'Groups'){
+    cnt_data = cnt_data %>%
+      filter(annotation != 'pLoF|Missense')
+  }
   plt = cnt_data %>%
   ggplot + aes(x = interval, y = cnt, color = annotation, fill = annotation) +
   geom_bar(stat ='identity', position = 'dodge') +
@@ -590,14 +683,14 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
 
 save_var_gene_comparison_table = function(filter = T, normalize = T, save_plot = F, output_path){
   if(filter){
-    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_filtered_', test, '_3annt_', tranche,'.txt.bgz'), subfolder = 'analysis/')
   }else{
-    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_unfiltered_', test, '_300k.txt.bgz'), subfolder = 'analysis/')
+    var_gene = load_ukb_file(paste0('var_gene_comparison_by_pheno_unfiltered_', test,  '_', tranche, '.txt.bgz'), subfolder = 'analysis/')
   }
-  var_gene_summary = rbind(get_var_gene_overlap_count(data = var_gene, pheno_group = 'all', normalize = normalize, print = F), 
-                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'icd_first_occurrence', normalize = normalize, print = F), 
-                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'categorical', normalize = normalize, print = F), 
-                           get_var_gene_overlap_count(data = var_gene, pheno_group = 'continuous', normalize = normalize, print = F)) %>%
+  var_gene_summary = rbind(get_var_gene_overlap_count(data = var_gene, group = 'all', normalize = normalize, print = F),
+                           get_var_gene_overlap_count(data = var_gene, group = 'icd10', normalize = normalize, print = F),
+                           get_var_gene_overlap_count(data = var_gene, group = 'categorical', normalize = normalize, print = F),
+                           get_var_gene_overlap_count(data = var_gene, group = 'continuous', normalize = normalize, print = F)) %>%
     mutate(x_offset = rep(c(-0.25, 0.25, 0.25, -0.25), each = 4), 
            y_offset = rep(c(0.25, -0.25, 0.25, -0.25), each = 4), 
            value = round(value, digits = 2))
@@ -628,4 +721,36 @@ pivot_longer_lambda_data = function(data){
     mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2),
            result_type = factor(result_type,levels = result_types))
   return(data)
+}
+
+
+get_constrained_matched_pheno_group_table <- function(gene_sig_after, gene_info, test, write = FALSE){
+  constrained = gene_sig_after %>%
+    merge(gene_info[, c('gene_id', 'gene', 'oe_lof_upper_bin')], ., by.x = c('gene_id', 'gene'), by.y =c('gene_id', 'gene_symbol')) %>%
+    filter(oe_lof_upper_bin == 0) %>% distinct(gene_id)
+  # gene_sig_after <- gene_sig_after %>%
+  #   mutate(binary_sig_pheno_cnt_skato = categorical_sig_pheno_cnt_skato + icd10_sig_pheno_cnt_skato)
+  # gene_sig_after <- gene_sig_after %>%
+  #   mutate(binary_sig_pheno_cnt_skato = categorical_sig_pheno_cnt_skato + icd10_sig_pheno_cnt_skato)
+  matched_constrained_sum_all = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = 'all_sig_pheno_cnt', oversample = 1000,
+                                                            ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+  matched_constrained_sum_con = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('continuous_sig_pheno_cnt_', test), oversample = 1000,
+                                                              ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+  matched_constrained_sum_cat = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('categorical_sig_pheno_cnt_', test), oversample = 1000,
+                                                              ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+  matched_constrained_sum_icd = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('icd10_sig_pheno_cnt_', test), oversample = 1000,
+                                                              ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+  # matched_constrained_sum_bin = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('binary_sig_pheno_cnt_', test), oversample = 1000,
+  #                                                           ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+  matched_constrained_sum <- matched_constrained_sum_all %>%
+    mutate(pheno_group = 'all') %>%
+    rbind(matched_constrained_sum_con %>% mutate(pheno_group = 'continuous'))%>%
+    rbind(matched_constrained_sum_cat %>% mutate(pheno_group = 'categorical'))%>%
+    rbind(matched_constrained_sum_icd %>% mutate(pheno_group = 'icd10'))
+# %>%
+#     rbind(matched_constrained_sum_bin %>% mutate(pheno_group = 'binary'))
+  if(write){
+    write_csv(matched_constrained_sum, '~/ukb_exomes/data/matched_constrained_by_pheno_groups.csv')
+  }
+  return(matched_constrained_sum)
 }

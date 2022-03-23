@@ -1,76 +1,165 @@
 source('~/ukb_exomes/R/constants.R')
-lambda_by_gene_before  = load_ukb_file('lambda_by_gene_filtered_300k.txt.bgz')
+
+pheno_corr <- read_delim('/Users/wlu/OneDrive/2020Work/Pleiotropy/subset_data_pheno_correlation_bgz.txt', delim = '\t',
+                         col_types = cols(i_pheno = col_character(), j_pheno = col_character()))
+corr = load_ukb_file(paste0('correlation_table_phenos_', tranche,'.txt.bgz'), subfolder = 'qc/')
+corr2 <- corr %>%
+  mutate(i_pheno = str_sub(str_replace_all(i_data, '[^[:alnum:]]',''), 29,33),
+         j_pheno = str_sub(str_replace_all(j_data, '[^[:alnum:]]',''), 29,35),) %>%
+  mutate(j_pheno = str_replace_all(j_pheno, '[a-z]',''))
+
+
+
+# --------Missense Check----------
+test = 'skato'
+gene_info = load_ukb_file('gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz', subfolder = 'analysis/')
+gene_info <- gene_info %>%
+  mutate(mis_bin = ntile(gene_info$oe_mis, 10))
+gene_sig_after = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/')
+gene_sig_after = gene_sig_after %>%
+  filter(annotation != 'pLoF|missense|LC')
+
+mis_constrained = gene_sig_after %>%
+    merge(gene_info[, c('gene_id', 'gene', 'mis_bin')], ., by.x = c('gene_id', 'gene'), by.y =c('gene_id', 'gene_symbol')) %>%
+    filter(mis_bin %in% c(1,2)) %>% distinct(gene_id)
+matched_constrained_sum = get_subset_matched_data_summary(gene_sig_after, subset = mis_constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = 'all_sig_pheno_cnt', oversample = 1000,
+                                                          ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
+
+matched_constrained_sum %>%
+    mutate(annotation = factor(annotation, levels = annotation_types)) %>%
+    ggplot +
+    geom_pointrange(aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, group = group, color = annotation, fill=annotation, pch = group),
+                    stat = "identity", position = position_dodge(width = 1)) +
+    labs(y = 'Proportion', x = NULL, alpha = NULL)  +
+    scale_y_continuous(label = label_percent(accuracy = 1), breaks = c(0,0.05,0.10,0.15)) +
+    scale_x_discrete(labels = annotation_names, limits = rev(levels(matched_constrained_sum$annotation))) +
+    annotation_color_scale + annotation_fill_scale  +
+    scale_shape_manual(name = NULL, values = c(1, 16)) +
+    coord_flip(ylim = c(0,0.2)) +
+    theme(panel.spacing = unit(1, "lines"),
+        axis.text= element_text(size = 14),
+        strip.background = element_blank(),
+        strip.placement = "outside",
+        strip.text = element_text(face='bold', size=14),
+        strip.text.y = element_blank(),
+        legend.text = element_text(size = 13),
+        legend.title = element_text(size = 13),
+        axis.title = element_text(size = 13))
+
+# --------Preliminary Phenotype Check----------
+# pre_qc_pheno = load_ukb_file(paste0('pheno_results.txt.bgz'), subfolder = 'results/')
+pre_qc_pheno = read_delim('/Users/wlu/Desktop/ukb_exomes_450k/pre_filter/pheno_text_file/pheno_results_without_pharma_tag_new.txt.bgz', delim = '\t',)
+pre_qc_pheno = pre_qc_pheno %>%
+  select('n_cases_defined', 'n_controls', 'trait_type', 'phenocode', 'pheno_sex', 'coding', 'modifier', 'description', 'description_more', 'coding_description', 'category')
+write.table(pre_qc_pheno, paste0('/Users/wlu/Desktop/ukb_exomes_450k/pre_filter/pheno_text_file/ukb_exome_450k_phenotypes_pharma_tag_removed_new.txt'), quote = FALSE, row.names = FALSE, sep = '\t')
+
+# --------Preliminary CAF*n_cases Check----------
+lambda_gene_full_before  = load_ukb_file(paste0('lambda_by_pheno_full_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+lambda_gene_full_after  = load_ukb_file(paste0('lambda_by_pheno_full_filtered_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+
 
 # --------Preliminary Lambda GC Check----------
-lambda_gene_full_before  = load_ukb_file('lambda_gene_full300k.txt.bgz')
-lambda_gene_annt_before  = load_ukb_file('lambda_gene_annt300k.txt.bgz')
-lambda_gene_caf_before  = load_ukb_file('lambda_gene_af300k.txt.bgz')
-lambda_gene_caf_annt_before  = load_ukb_file('lambda_gene_af_annt300k.txt.bgz')
-
-lambda_var_full_before  = load_ukb_file('lambda_var_full300k.txt.bgz')
-lambda_var_annt_before  = load_ukb_file('lambda_var_annt300k.txt.bgz')
-lambda_var_af_before  = load_ukb_file('lambda_var_af300k.txt.bgz')
-lambda_var_af_annt_before  = load_ukb_file('lambda_var_af_annt300k.txt.bgz')
-
-lambda_by_gene_before  = load_ukb_file('lambda_by_gene300k.txt.bgz')
+lambda_gene_full_before  = load_ukb_file(paste0('lambda_by_pheno_full_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+lambda_gene_annt_before  = load_ukb_file(paste0('lambda_by_pheno_annt_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+lambda_gene_caf_before  = load_ukb_file(paste0('lambda_by_pheno_freq_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+lambda_by_gene_before  = load_ukb_file(paste0('lambda_by_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
+lambda_by_gene_before_coverage  = load_ukb_file(paste0('lambda_by_gene_before_coverage_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
 
 # Data Cleaning
 lambda_gene_full_before = lambda_gene_full_before %>%
-  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2), )%>%
-  mutate(result_type = factor(result_type, levels = result_types), 
-         trait_type2 = factor(trait_type2, levels=trait_types), )
+  pivot_longer_lambda_data() %>%
+  mutate(trait_type2 = factor(trait_type2, levels=trait_types))
 
 lambda_gene_annt_before = lambda_gene_annt_before %>%
-  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1), 
-         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2), ) %>%
-  mutate(annotation = factor(annotation, levels = annotation_types), 
-         result_type = factor(result_type, levels = result_types), 
+  select(-c(7:9)) %>%
+  pivot_longer_lambda_data() %>%
+  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1) ) %>%
+  mutate(annotation = factor(annotation, levels = annotation_types),
          trait_type2 = factor(trait_type2, levels=trait_types), )
 
 lambda_gene_caf_before = lambda_gene_caf_before %>%
-  pivot_longer(cols = contains('lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(result_type = str_split(labels, 'lambda_gc_') %>% map_chr(., 2), ) %>%
-  mutate(result_type = factor(result_type, levels = result_types), 
-         trait_type2 = factor(trait_type2, levels=trait_types), 
-         CAF_range = factor(CAF_range, levels = caf_types), )
-
-lambda_gene_caf_annt_before = lambda_gene_caf_annt_before %>%
-  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1), 
-         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2), ) %>%
-  mutate(annotation = factor(annotation, levels = annotation_types), 
-         result_type = factor(result_type, levels = result_types), 
-         trait_type2 = factor(trait_type2, levels=trait_types), 
+  pivot_longer_lambda_data() %>%
+  mutate(trait_type2 = factor(trait_type2, levels=trait_types),
          CAF_range = factor(CAF_range, levels = caf_types), )
 
 lambda_by_gene_before = lambda_by_gene_before %>%
-  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1), 
-         result_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 2), ) %>%
-  mutate(annotation = factor(annotation, levels = annotation_types), 
-         result_type = factor(result_type, levels = result_types), )
+  select(-c(6:8)) %>%
+  pivot_longer_lambda_data() %>%
+  mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
+         annotation = factor(annotation, levels = annotation_types))
 
-lambda_var_full_before = lambda_var_full_before %>% mutate(trait_type2 = factor(trait_type2, levels=trait_types), )
-lambda_var_af_before = lambda_var_af_before %>%
-  mutate(trait_type2 = factor(trait_type2, levels=trait_types), 
-         AF_range = factor(AF_range, levels = af_types))
+lambda_by_gene_before_coverage = lambda_by_gene_before_coverage %>%
+  select(-c(6:8)) %>%
+  pivot_longer_lambda_data( ) %>%
+  mutate(trait_type = str_split(labels, '_lambda_gc_') %>% map_chr(., 1),
+         coverage_int = get_coverage_interval(mean_coverage),
+         annotation = factor(annotation, levels = annotation_types),
+         coverage_int = factor(coverage_int, levels = c('[0, 10]', '(10, 20]', '(20, 30]', '(30, 40]', '(40, 50]', '(50, )'))) %>%
+  filter(trait_type != 'icd10')
 
-lambda_var_annt_before = lambda_var_annt_before %>%
-  select(-lambda_gc) %>%
-  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1), ) %>%
-  mutate(annotation = factor(annotation, levels = annotation_types), 
-         trait_type2 = factor(trait_type2, levels=trait_types), )
+## Plotting
+p_lambda_gene_full_before = lambda_gene_full_before %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 0.5) + ylim(0, 2) + theme_classic() +
+  labs(y = 'Lambda GC', x = '') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_wrap(~result_type, ncol=3, labeller = label_type) + themes
 
-lambda_var_af_annt_before = lambda_var_af_annt_before %>%
-  select(-lambda_gc) %>%
-  pivot_longer(cols = contains('_lambda_gc_'), names_to = 'labels', names_repair = 'unique', values_to = 'lambda_gc') %>%
-  mutate(annotation = str_split(labels, '_lambda_gc_') %>% map_chr(., 1), ) %>%
-  mutate(annotation = factor(annotation, levels = annotation_types), 
-         trait_type2 = factor(trait_type2, levels=trait_types), 
-         AF_range = factor(AF_range, levels = af_types))
+png(paste0(path_to, 'lambda_gene_full_pre_filter.png'), height = 3, width = 7, units = 'in', res = 300)
+print(p_lambda_gene_full_before)
+# print(ggarrange(p_lambda_gene_full_before, p_lambda_gene_full_after, labels = c('Before', 'After'), nrow = 2,
+#                   label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2)))
+dev.off()
+
+p_lambda_gene_caf_bin_before = lambda_gene_caf_before %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size = 0.5) + ylim(0, 2) + theme_classic() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_grid(result_type~CAF_range, labeller = label_type) + themes
+
+png(paste0(path_to, 'lambda_gene_caf_bin_pre_filter.png'), height = 5, width = 10, units = 'in', res = 300)
+print(p_lambda_gene_caf_bin_before)
+dev.off()
+
+detach(package:plyr)
+gene_cnt_before = lambda_by_gene_before %>%
+  filter(trait_type == 'all') %>%
+  group_by(result_type, annotation) %>%
+  summarise(cnt = sum(lambda_gc>2, na.rm = TRUE))
+p_lambda_dist_by_gene_before = lambda_by_gene_before %>%
+  mutate(lambda_gc = replace(lambda_gc, lambda_gc>2, 2)) %>%
+  filter(trait_type == 'all') %>%
+  ggplot + aes(x = lambda_gc, color = annotation, fill = annotation) +
+  geom_density(alpha = 0.5) + theme_classic() +
+  # scale_y_log10(label=comma) +
+  labs(x = 'Gene Lambda GC', y = 'Density') +
+  geom_vline(xintercept = 1, lty = 2) +
+  annotation_color_scale + annotation_fill_scale + themes +
+  facet_grid(result_type~annotation, scale='free', labeller = label_type) +
+  geom_text(data = gene_cnt_before, aes(label = paste('Genes with lambda>2: ', as.character(cnt)), x = 1.5, y = 2.5, face = 'bold', color = annotation, group = NULL), size = 2)
+
+png(paste0(path_to, 'lambda_dist_by_gene_without_filter.png'), height = 5, width = 9, units = 'in', res = 300)
+print(p_lambda_dist_by_gene_before)
+dev.off()
+
+p_lambda_gene_annt_before = lambda_gene_annt_before %>%
+  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
+  geom_point(alpha = 0.5, size=0.5) + ylim(0, 2) + theme_classic() +
+  labs(y = 'Lambda GC', x = 'Number of Cases') +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_x_log10(label = comma, limits = c(2, NA)) +
+  trait_color_scale + trait_fill_scale +
+  facet_grid(result_type~annotation, labeller = label_type) + themes
+
+png(paste0(path_to, 'lambda_gene_annt_pre_filter.png'), height = 5, width = 7.5, units = 'in', res = 300)
+print(p_lambda_gene_annt_before)
+dev.off()
+
 
 # --------QCed Lambda GC----------
 lambda_gene_full  = load_ukb_file('lambda_full_filtered_gene_300k.txt.bgz')
@@ -153,14 +242,7 @@ lambda_var_ac = lambda_var_ac %>%
 lambda_var_ac_cnt = lambda_var_ac %>% group_by(ac_type) %>% summarise(cnt = sum(!is.na(lambda_gc)))
 
 # Plotting
-p_lambda_gene_full_before = lambda_gene_full_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = '') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_wrap(~result_type, ncol=3, labeller = label_type) + themes
+
 
 p_lambda_gene_full_after = lambda_gene_full %>%
   ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
@@ -171,11 +253,6 @@ p_lambda_gene_full_after = lambda_gene_full %>%
   trait_color_scale + trait_fill_scale +
   facet_wrap(~result_type, ncol=3, labeller = label_type) + themes +
   theme(legend.position = 'none')
-
-png('~/Figures/lambdaGC/filtered/lambda_gene_full.png', height = 4, width = 6, units = 'in', res = 300)
-print(ggarrange(p_lambda_gene_full_before, p_lambda_gene_full_after, labels = c('Before', 'After'), nrow = 2, 
-                  label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2)))
-dev.off()
 
 png('~/Figures/supp_figures/figureS14_lambda_gene_before_after.png', height = 4, width = 6, units = 'in', res = 300)
 print(ggarrange(p_lambda_gene_full_before, p_lambda_gene_full_after, labels = c('Before', 'After'), nrow = 2, 
@@ -191,33 +268,13 @@ p_lambda_gene_annt_after = lambda_gene_annt %>%
   trait_color_scale + trait_fill_scale +
   facet_grid(result_type~annotation, labeller = label_type) + themes
 
-p_lambda_gene_annt_before = lambda_gene_annt_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(result_type~annotation, labeller = label_type) + themes
-
 png('~/Figures/lambdaGC/filtered/lambda_gene_annt_filtered.png', height = 5, width = 7.5, units = 'in', res = 300)
 print(p_lambda_gene_annt_after)
 dev.off()
 
-png('~/Figures/lambdaGC/without_filter/lambda_gene_annt_without_filter.png', height = 5, width = 7.5, units = 'in', res = 300)
-print(p_lambda_gene_annt_before)
-dev.off()
+
 
 p_lambda_gene_caf_bin_after = lambda_gene_caf %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(result_type~CAF_range, labeller = label_type) + themes
-
-p_lambda_gene_caf_bin_before = lambda_gene_caf_before %>%
   ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
   geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
   labs(y = 'Lambda GC', x = 'Number of Cases') +
@@ -231,137 +288,8 @@ png('~/Figures/lambdaGC/filtered/lambda_gene_caf_bin_filtered.png', height = 5, 
 print(p_lambda_gene_caf_bin_after)
 dev.off()
 
-png('~/Figures/lambdaGC/without_filter/lambda_gene_caf_bin_without_filter.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_gene_caf_bin_before)
-dev.off()
-
 png('~/Figures/supp_figures/figureS13_lambda_gene_caf_bin.png', height = 5, width = 9, units = 'in', res = 300)
 print(p_lambda_gene_caf_bin_after)
-dev.off()
-
-p_lambda_gene_caf_annt_after = lambda_gene_caf_annt %>%
-  filter(result_type == 'burden') %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC \n (Burden Test)', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(annotation~CAF_range, labeller = label_type) + themes+
-  theme(axis.text = element_text(color = 'Black', size = 5), )
-
-p_lambda_gene_caf_annt_before = lambda_gene_caf_annt_before %>%
-  filter(result_type == 'skato') %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC \n (SKAT-O)', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(annotation~CAF_range, labeller = label_type) + themes
-
-png('~/Figures/lambdaGC/filtered/lambda_gene_caf_annt_burden_filtered.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_gene_caf_annt_after)
-dev.off()
-
-png('~/Figures/lambdaGC/without_filter/lambda_gene_caf_annt_skato_without_filter.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_gene_caf_annt_before)
-dev.off()
-
-p_lambda_var_full_after =lambda_var_full %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = '', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale + themes
-
-p_lambda_var_full_before =lambda_var_full_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale + themes
-
-png('~/Figures/lambdaGC/filtered/lambda_var_SErm_full.png', height = 2, width = 6, units = 'in', res = 300)
-print(ggarrange(p_lambda_var_full_before, p_lambda_var_full_after, labels = c('Before', 'After'), ncol=2, 
-                  label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2)))
-dev.off()
-
-p_lambda_var_annt_after = lambda_var_annt %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_wrap(~annotation, ncol = 3, labeller = label_type) + themes+
-  theme(legend.position = 'none')
-
-p_lambda_var_annt_before = lambda_var_annt_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = '') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_wrap(~annotation, ncol = 3, labeller = label_type) + themes
-
-png('~/Figures/lambdaGC/filtered/lambda_var_SErm_annt.png', height = 4, width = 6, units = 'in', res = 300)
-print(ggarrange(p_lambda_var_annt_before, p_lambda_var_annt_after, labels = c('Before', 'After'), nrow = 2, 
-                  label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2)))
-dev.off()
-
-p_lambda_var_af_after = lambda_var_af %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_wrap(~AF_range, nrow = 1, labeller = label_type) + themes +
-  theme(axis.text = element_text(color = 'Black', size = 5), legend.position = 'none')
-
-p_lambda_var_af_before = lambda_var_af_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = '') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_wrap(~AF_range, nrow = 1, labeller = label_type) + themes
-
-png('~/Figures/lambdaGC/filtered/lambda_var_af_bin.png', height = 5, width = 9, units = 'in', res = 300)
-print(ggarrange(p_lambda_var_af_before, p_lambda_var_af_after, labels = c('Before', 'After'), nrow = 2, 
-                  label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2)))
-dev.off()
-
-p_lambda_var_af_annt_after = lambda_var_af_annt %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(annotation~AF_range, labeller = label_type) + themes
-
-p_lambda_var_af_annt_before = lambda_var_af_annt_before %>%
-  ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
-  geom_point(alpha = 0.5) + ylim(0, 2) + theme_classic() +
-  labs(y = 'Lambda GC', x = 'Number of Cases') +
-  geom_hline(yintercept = 1, lty = 2) +
-  scale_x_log10(label = comma, limits = c(2, NA)) +
-  trait_color_scale + trait_fill_scale +
-  facet_grid(annotation~AF_range, labeller = label_type) + themes
-
-
-png('~/Figures/lambdaGC/filtered/lambda_var_af_annt_filtered.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_var_af_annt_after)
-dev.off()
-
-png('~/Figures/lambdaGC/without_filter/lambda_var_af_annt_without_filter.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_var_af_annt_before)
 dev.off()
 
 p_lambda_dist_by_pheno_after = lambda_gene_annt %>%
@@ -411,23 +339,6 @@ p_lambda_dist_by_gene_after = lambda_by_gene %>%
   facet_grid(result_type~annotation, scale='free', labeller = label_type) +
   geom_text(data = gene_cnt_after, aes(label = paste('Genes with \n lambda>2: ', as.character(cnt)), x = 1.5, y = 2.5, face = 'bold', color = annotation, group = NULL), size = 3)
 
-gene_cnt_before = lambda_by_gene_before %>%
-  filter(trait_type == 'all') %>%
-  group_by(result_type, annotation) %>%
-  summarise(cnt = sum(lambda_gc>2, na.rm = TRUE))
-p_lambda_dist_by_gene_before = lambda_by_gene_before %>%
-  mutate(lambda_gc = replace(lambda_gc, lambda_gc>2, 2)) %>%
-  filter(trait_type == 'all') %>%
-  ggplot + aes(x = lambda_gc, color = annotation, fill = annotation) +
-  geom_density(alpha = 0.5) + theme_classic() +
-  # scale_y_log10(label=comma) +
-  labs(x = 'Gene Lambda GC', y = 'Density') +
-  geom_vline(xintercept = 1, lty = 2) +
-  annotation_color_scale + annotation_fill_scale + themes +
-  facet_grid(result_type~annotation, scale='free', labeller = label_type) +
-  geom_text(data = gene_cnt_before, aes(label = paste('Genes with lambda>2: ', as.character(cnt)), x = 1.5, y = 2.5, face = 'bold', color = annotation, group = NULL), size = 2)
-
-
 png('~/Figures/lambdaGC/filtered/lambda_dist_by_gene_filtered.png', height = 5, width = 7.5, units = 'in', res = 300)
 print(p_lambda_dist_by_gene_after)
 dev.off()
@@ -436,9 +347,7 @@ png('~/Figures/supp_figures/figureS17_lambda_by_gene_filtered.png', height = 5, 
 print(p_lambda_dist_by_gene_after)
 dev.off()
 
-png('~/Figures/lambdaGC/without_filter/lambda_dist_by_gene_without_filter.png', height = 5, width = 9, units = 'in', res = 300)
-print(p_lambda_dist_by_gene_before)
-dev.off()
+
 
 p_lambda_var_ac_after = lambda_var_ac %>%
   ggplot + aes(x = n_cases, y = lambda_gc, color = trait_type2, label = phenocode) +
@@ -689,23 +598,39 @@ print(p_pheno_var_sig_annt)
 dev.off()
 
 # --------Summary Statistics----------
-gene = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_300k.txt.bgz'), subfolder = 'analysis/') %>% mutate(annotation = factor(annotation, levels = annotation_types))
-pheno_var = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_var_300k.txt.bgz'), subfolder = 'analysis/')
-var = load_ukb_file('variant_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/') %>%
+gene = load_ukb_file(paste0('gene_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/') %>% mutate(annotation = factor(annotation, levels = annotation_types))
+pheno_var = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_var_', tranche,'.txt.bgz'), subfolder = 'analysis/')
+var = load_ukb_file(paste0('variant_qc_metrics_ukb_exomes_', tranche,'.txt.bgz'), subfolder = 'qc/') %>%
   mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation))%>%
   mutate(annotation = factor(annotation, levels = annotation_types))
-pheno = load_ukb_file('pheno_qc_metrics_ukb_exomes_300k.txt.bgz', subfolder = 'qc/') %>% mutate(trait_type = factor(trait_type, levels = trait_types))
+pheno = load_ukb_file(paste0('pheno_qc_metrics_ukb_exomes_', tranche,'.txt.bgz'), subfolder = 'qc/') %>% mutate(trait_type = factor(trait_type, levels = trait_types))
 
 gene %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
-gene %>% filter(keep_gene_caf) %>% group_by(annotation) %>% summarise(cnt = n())
-gene %>% filter(keep_gene_caf & keep_gene_coverage) %>% group_by(annotation) %>% summarise(cnt = n())
-gene %>% filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n())
-gene %>% filter(keep_gene_caf & keep_gene_coverage & keep_gene_n_var & keep_gene_skato) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_n_var & keep_gene_coverage) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var & keep_gene_skato) %>% group_by(annotation) %>% summarise(cnt = n())
+
+gene %>% filter(keep_gene_n_var) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_n_var & keep_gene_coverage) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var) %>% summarise(cnt = n())
+gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var & keep_gene_skato) %>% summarise(cnt = n())
+
+gene %>% group_by(annotation) %>% summarise(cnt = n())
+as.data.frame(gene %>% filter(keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n()))[,2]/
+  as.data.frame(gene %>% group_by(annotation) %>% summarise(cnt = n()))[,2]
+as.data.frame(gene %>% filter(keep_gene_n_var & keep_gene_coverage) %>% group_by(annotation) %>% summarise(cnt = n()))[,2]/
+  as.data.frame(gene %>% group_by(annotation) %>% summarise(cnt = n()))[,2]
+as.data.frame(gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var) %>% group_by(annotation) %>% summarise(cnt = n()))[,2]/
+  as.data.frame(gene %>% group_by(annotation) %>% summarise(cnt = n()))[,2]
+as.data.frame(gene %>% filter(keep_gene_expected_ac & keep_gene_coverage & keep_gene_n_var & keep_gene_skato) %>% group_by(annotation) %>% summarise(cnt = n()))[,2]/
+  as.data.frame(gene %>% group_by(annotation) %>% summarise(cnt = n()))[,2]
 
 var = var %>% mutate(annotation = if_else(annotation %in% c('missense', 'LC'), 'missense|LC', annotation))
 var %>% group_by(annotation) %>% summarise(cnt = n())
 nrow(var %>% filter(keep_var_annt))
-var %>% filter(keep_var_annt & keep_var_af) %>% group_by(annotation) %>% summarise(cnt = n())
+var %>% filter(keep_var_annt & keep_var_expected_ac) %>% group_by(annotation) %>% summarise(cnt = n())
 
 pheno %>% group_by(trait_type) %>% summarise(cnt = n())
 pheno %>% filter(keep_pheno_skato) %>% group_by(trait_type) %>% summarise(cnt = n())
@@ -722,6 +647,8 @@ pheno_var_sig_before %>% group_by(trait_type) %>% summarise(cnt = n(), sig_cnt =
 gene_sig_before %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt_burden))
 pheno_sig_before %>% group_by(trait_type) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_gene_cnt_burden))
 
+gene_sig_after  %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
+var_sig_after %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
 gene_sig_after %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
 var_sig_after %>% group_by(annotation) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_pheno_cnt))
 pheno_sig_after %>% group_by(trait_type2) %>% summarise(cnt = n(), sig_cnt = sum(all_sig_gene_cnt))
@@ -743,7 +670,7 @@ var_sig_long = var_sig_after %>%
 get_two_col_correlation_table(var_sig_after, group_col = 'annotation', col1 = 'AF', col2 = 'all_sig_pheno_cnt')
 get_two_col_correlation_table(gene_sig_after, group_col = 'annotation', col1 = 'CAF', col2 = 'all_sig_pheno_cnt')
 
-save_var_gene_comparison_table(filter = T, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_norm_', test, '.png'))
-save_var_gene_comparison_table(filter = T, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_count_', test, '.png'))
-save_var_gene_comparison_table(filter = F, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_norm_', test, '.png'))
-save_var_gene_comparison_table(filter = F, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_count_', test, '.png'))
+save_var_gene_comparison_table(filter = T, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_norm_', test, '_3annt', tranche, '.png'))
+save_var_gene_comparison_table(filter = T, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_after_count_', test, '_3annt', tranche, '.png'))
+save_var_gene_comparison_table(filter = F, normalize = T, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_norm_', test, '_', tranche, '.png'))
+save_var_gene_comparison_table(filter = F, normalize = F, save_plot = T, output_path = paste0(output, 'var_gene_comparison_before_count_', test, '_', tranche, '.png'))
