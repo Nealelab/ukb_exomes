@@ -58,13 +58,15 @@ def main(args):
             ),
             overwrite=args.overwrite,
         )
-        compute_lambda_gc_ht(result_type="gene", by_gene=True).write(
+        compute_lambda_gc_ht(
+            result_type="gene", expected_AC_min=args.expected_AC_min, by_gene=True
+        ).write(
             get_ukb_exomes_sumstat_path(
                 subdir="qc/lambda_gc",
                 dataset=f"lambda_by_gene",
                 result_type="",
             ),
-            overwrite=overwrite,
+            overwrite=args.overwrite,
         )
 
     if args.update_pheno_corr_tables:
@@ -271,6 +273,16 @@ def main(args):
             overwrite=args.overwrite,
         )
 
+    if args.update_constrained_tables:
+        get_constrained_con_pheno_group_ht(test_type=args.test_type).entries().write(
+            get_ukb_exomes_sumstat_path(
+                subdir="analysis",
+                dataset=f"constrained_gene_con_pheno_{args.test_type}",
+                result_type="",
+            ),
+            overwrite=args.overwrite,
+        )
+
     if args.update_random_pheno_tables:
         rp_lambda_caf = compute_lambdas_by_freq_interval_ht(
             result_type="gene", random_phenos=True
@@ -310,8 +322,8 @@ def main(args):
         )
 
     if args.convert_to_txt_bgz:
-        export_all_ht_to_txt_bgz("qc/lambda_gc")
-        export_all_ht_to_txt_bgz("qc")
+        # export_all_ht_to_txt_bgz("qc/lambda_gc")
+        # export_all_ht_to_txt_bgz("qc")
         export_all_ht_to_txt_bgz("analysis")
 
 
@@ -348,6 +360,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update_icd_tables",
+        help="Update minimum pvalue tables for icd phenotypes",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update_constrained_tables",
         help="Update minimum pvalue tables for icd phenotypes",
         action="store_true",
     )

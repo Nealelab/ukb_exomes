@@ -93,7 +93,8 @@ def compute_lambda_gc_ht(
                     mt.expected_AC >= expected_AC_min
                 )
             )
-            mt = mt.filter_rows(mt.expected_ac_row_filter > 0)
+            mt = mt.filter_entries(mt.expected_AC >= 50)
+            # mt = mt.filter_rows(mt.expected_ac_row_filter > 0)
         if freq_min is not None:
             logger.info(f"Removing {result_type}s with CAF <= {freq_min}...")
             mt = mt.filter_rows(mt.CAF > freq_min)
@@ -1515,6 +1516,7 @@ def get_qc_result_mt(
         )
     else:
         mt = mt.filter_rows(mt.keep_var_expected_ac & mt.keep_var_annt)
+    mt = mt.filter_entries(mt.keep_entry_expected_ac)
     return mt
 
 
@@ -1732,5 +1734,28 @@ def annotate_qc_metric_mt(
         )
     mt = annotate_pheno_qc_metric_mt(mt, lambda_min=lambda_min)
     mt = mt.annotate_globals(pheno_lambda_min=lambda_min)
+    mt = mt.annotate_entries(keep_entry_expected_ac = mt.expected_AC >= expected_AC_min)
 
     return mt
+
+def get_constrained_con_pheno_group_ht(test_type:str='skato', tranche:str = CURRENT_TRANCHE):
+    ht = hl.import_table(
+        'gs://gcp-public-data--gnomad/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz',
+        key=['gene', 'gene_id'], types={'oe_lof_upper_bin': hl.tint64})
+    mt = get_qc_result_mt('gene', test_type, tranche)
+    mt = mt.filter_rows(mt.annotation != 'pLoF|missense|LC')
+    mt = mt.filter_cols(mt.trait_type == 'continuous')
+    mt = mt.annotate_cols(pheno_group=hl.case()
+                          .when(mt.category.matches('Touchscreen'), 'Touchscreen')
+                          .when(mt.category.matches('Physical measures'), 'Physical measures')
+                          .when(mt.category.matches('Imaging'), 'Imaging')
+                          .when((mt.phenocode.startswith('30')) & (hl.len(mt.phenocode) == 5), 'Biomarkers')
+                          .or_missing())
+    mt = mt.filter_cols(hl.is_defined(mt.pheno_group))
+    mt = mt.annotate_entries(pheno_sig=hl.if_else(mt[P_VALUE_FIELDS[test_type]] <
+                                                  EMPIRICAL_P_THRESHOLDS[test_type], 1, 0))
+    mt = mt.annotate_entries(pheno_sig=hl.if_else(hl.is_missing(mt.pheno_sig), 0, mt.pheno_sig))
+    sub = mt.group_cols_by(mt.pheno_group).aggregate(pheno_group_sig_cnt=hl.agg.sum(mt.pheno_sig))
+    sub = sub.select_rows('CAF')
+    return sub
+

@@ -623,7 +623,7 @@ save_prop_by_annt_freq_figure_500k = function(matched_summary, output_path, save
             axis.text= element_text(size = 10),
             axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
   if(save_plot){
-    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    png(output_path, height = 3, width = 5, units = 'in', res = 300)
     print(plt)
     dev.off()
   }
@@ -728,10 +728,6 @@ get_constrained_matched_pheno_group_table <- function(gene_sig_after, gene_info,
   constrained = gene_sig_after %>%
     merge(gene_info[, c('gene_id', 'gene', 'oe_lof_upper_bin')], ., by.x = c('gene_id', 'gene'), by.y =c('gene_id', 'gene_symbol')) %>%
     filter(oe_lof_upper_bin == 0) %>% distinct(gene_id)
-  # gene_sig_after <- gene_sig_after %>%
-  #   mutate(binary_sig_pheno_cnt_skato = categorical_sig_pheno_cnt_skato + icd10_sig_pheno_cnt_skato)
-  # gene_sig_after <- gene_sig_after %>%
-  #   mutate(binary_sig_pheno_cnt_skato = categorical_sig_pheno_cnt_skato + icd10_sig_pheno_cnt_skato)
   matched_constrained_sum_all = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = 'all_sig_pheno_cnt', oversample = 1000,
                                                             ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
   matched_constrained_sum_con = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('continuous_sig_pheno_cnt_', test), oversample = 1000,
@@ -740,15 +736,11 @@ get_constrained_matched_pheno_group_table <- function(gene_sig_after, gene_info,
                                                               ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
   matched_constrained_sum_icd = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('icd10_sig_pheno_cnt_', test), oversample = 1000,
                                                               ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
-  # matched_constrained_sum_bin = get_subset_matched_data_summary(gene_sig_after, subset = constrained, freq_col = 'CAF', id_col = 'gene_id', sig_col = paste0('binary_sig_pheno_cnt_', test), oversample = 1000,
-  #                                                           ref_label = 'Background', sub_label = 'Test Set') %>% mutate(gene_set_name = 'Constrained')
   matched_constrained_sum <- matched_constrained_sum_all %>%
     mutate(pheno_group = 'all') %>%
     rbind(matched_constrained_sum_con %>% mutate(pheno_group = 'continuous'))%>%
     rbind(matched_constrained_sum_cat %>% mutate(pheno_group = 'categorical'))%>%
     rbind(matched_constrained_sum_icd %>% mutate(pheno_group = 'icd10'))
-# %>%
-#     rbind(matched_constrained_sum_bin %>% mutate(pheno_group = 'binary'))
   if(write){
     write_csv(matched_constrained_sum, '~/ukb_exomes/data/matched_constrained_by_pheno_groups.csv')
   }

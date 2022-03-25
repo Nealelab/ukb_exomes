@@ -37,7 +37,7 @@ save_prop_by_annt_freq_figure_500k_supp = function(matched_summary, type, output
   return(plt)
 }
 
-figure3supp <- function(save_plot=F, output_path){
+figureS19 <- function(save_plot=F, output_path){
   if(tranche=='500k'){
     gene_sig_sum = format_sig_cnt_summary_data_500k(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
     var_sig_sum = format_sig_cnt_summary_data_500k(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
@@ -45,16 +45,16 @@ figure3supp <- function(save_plot=F, output_path){
     gene_sig_sum = format_sig_cnt_summary_data(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
     var_sig_sum = format_sig_cnt_summary_data(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
   }
-  figure3b_supp1 = save_prop_by_annt_freq_figure_500k_supp(var_sig_sum, 'variants' ,  output_path = paste0(output, 'figure3b_supp_var_',tranche, '_', test,'.png'), save_plot = TRUE)
-  figure3b_supp2 = save_prop_by_annt_freq_figure_500k_supp(gene_sig_sum, 'genes', output_path = paste0(output, 'figure3b_supp_gene_',tranche, '_', test,'.png'), save_plot = TRUE)
+  figure1 = save_prop_by_annt_freq_figure_500k_supp(var_sig_sum, 'variants' ,  output_path = paste0(output, 'figure3b_supp_var_',tranche, '_', test,'.png'), save_plot = TRUE)
+  figure2 = save_prop_by_annt_freq_figure_500k_supp(gene_sig_sum, 'genes', output_path = paste0(output, 'figure3b_supp_gene_',tranche, '_', test,'.png'), save_plot = TRUE)
 
-  figure3_supp = ggarrange(figure3b_supp1, figure3b_supp2, labels = c('(A) Single-Variant', '(B) SKAT-O'), nrow=2, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
+  figure = ggarrange(figure1, figure2, labels = c('(A) Single-Variant', '(B) SKAT-O'), nrow=2, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
   if(save_plot){
-      png(output_path, height = 6, width = 7.5, units = 'in', res = 300)
-      print(figure3_supp)
+      png(output_path, height = 6, width = 5, units = 'in', res = 300)
+      print(figure)
       dev.off()
   }
-  return(figure3_supp)
+  return(figure)
 }
 
-figure3supp(save_plot = T, paste0(output_path, 'figure3b_supp_',tranche, '_', test,'.png'))
+figureS19(save_plot = T, paste0(output_path, 'figureS19_common_variant_gene_',tranche, '_', test,'.png'))

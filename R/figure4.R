@@ -34,6 +34,7 @@ figure4 = function(save_plot = F, output_path){
     mutate(annotation = factor(annotation, levels = annotation_types), 
            gene_set_name = factor(gene_set_name, levels = names(gene_list_names)), 
            group = factor(group, levels = c('Background', 'Test Set')))
+  print(matched)
   matched$panel = c(rep(rep(c(1, 2), each = 6), 4))
 
   matched_test_fisher = matched %>%
@@ -42,9 +43,10 @@ figure4 = function(save_plot = F, output_path){
     group_by(annotation, gene_set_name, panel)%>%
     group_modify(~ broom::tidy(fisher.test(as.matrix(.)))) %>%
     merge(.,matched %>% group_by(gene_set_name) %>% summarise(pos = max(prop+sd)), by = c('gene_set_name')) %>%
-    mutate(sig_label = if_else(p.value < 0.001, '**', if_else(p.value < 0.05, '*', '')),
+    mutate(sig_label = if_else(p.value < 0.001 & estimate < 1, '**', if_else(p.value < 0.05 & estimate < 1, '*', '')),
            annotation = factor(annotation, levels = annotation_types), pos = 0.18) %>%
     filter(p.value< 0.05)
+  print(matched_test_fisher)
 
   figure4_p1 = matched %>% filter(panel == 1) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 1))
   figure4_p2 = matched %>% filter(panel == 2) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 2))
