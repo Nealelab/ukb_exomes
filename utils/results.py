@@ -564,23 +564,23 @@ def write_lambda_hts(
         ),
         overwrite=overwrite,
     )
-    # compute_lambdas_by_freq_interval_ht(
-    #     freq_breaks=freq_breaks, expected_AC_min=expected_AC_min, **kwargs
-    # ).write(
-    #     get_ukb_exomes_sumstat_path(
-    #         dataset=f"{rp}lambda_by_pheno_freq{filter}", **pathargs
-    #     ),
-    #     overwrite=overwrite,
-    # )
-    #
-    # compute_lambdas_by_expected_ac_ht(
-    #     ac_breaks=[0, 5, 50, 500, 5000, 50000], **kwargs
-    # ).write(
-    #     get_ukb_exomes_sumstat_path(
-    #         dataset=f"{rp}lambda_by_pheno_expected_ac{filter}", **pathargs
-    #     ),
-    #     overwrite=overwrite,
-    # )
+    compute_lambdas_by_freq_interval_ht(
+        freq_breaks=freq_breaks, expected_AC_min=expected_AC_min, **kwargs
+    ).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_freq{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
+
+    compute_lambdas_by_expected_ac_ht(
+        ac_breaks=[0, 5, 50, 500, 5000, 50000], **kwargs
+    ).write(
+        get_ukb_exomes_sumstat_path(
+            dataset=f"{rp}lambda_by_pheno_expected_ac{filter}", **pathargs
+        ),
+        overwrite=overwrite,
+    )
 
     if result_type == "gene":
         compute_lambda_gc_ht(

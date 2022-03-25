@@ -42,22 +42,22 @@ def main(args):
         caf.write(get_util_info_path("caf"), overwrite=args.overwrite)
 
     if args.update_lambda_tables:
-        # write_lambda_hts(
-        #     result_type="gene",
-        #     freq_min=args.freq_min,
-        #     expected_AC_min=args.expected_AC_min,
-        #     n_var_min=args.n_var_min,
-        #     coverage_min=args.coverage_min,
-        #     var_filter=args.filters,
-        #     extension="ht",
-        #     overwrite=args.overwrite,
-        # )
-        # compute_lambda_gc_ht(result_type="gene").write(
-        #     get_ukb_exomes_sumstat_path(
-        #         subdir="qc/lambda_gc", dataset="lambda_by_pheno_full"
-        #     ),
-        #     overwrite=args.overwrite,
-        # )
+        write_lambda_hts(
+            result_type="gene",
+            freq_min=args.freq_min,
+            expected_AC_min=args.expected_AC_min,
+            n_var_min=args.n_var_min,
+            coverage_min=args.coverage_min,
+            var_filter=args.filters,
+            extension="ht",
+            overwrite=args.overwrite,
+        )
+        compute_lambda_gc_ht(result_type="gene").write(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc/lambda_gc", dataset="lambda_by_pheno_full"
+            ),
+            overwrite=args.overwrite,
+        )
         compute_lambda_gc_ht(
             result_type="gene", expected_AC_min=args.expected_AC_min, by_gene=True
         ).write(

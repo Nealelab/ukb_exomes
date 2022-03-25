@@ -121,12 +121,6 @@ figure2 = function(save_plot = F, output_path){
   return(figure)
 }
 
-figure1 = figure1(save_plot = T, paste0(output_path, 'figureS_constrained1',tranche, '_', test,'.png'))
+figure1 = figure1(save_plot = T, paste0(output_path, 'figureS_constrained_1',tranche, '_', test,'.png'))
 
-figure2 = figure2(save_plot = T, paste0(output_path, 'figureS_constrained2',tranche, '_', test,'.png'))
-
-figure = ggarrange(figure1, figure2, labels = c('(A) All phenotypes', '(B) Continuous phenotypes'), nrow=2, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
-
-png(paste0(output_path, 'figureS_constrained',tranche, '_', test,'.png'), height = 6, width = 6, units = 'in', res = 300)
-print(figure)
-dev.off()
+figure2 = figure2(save_plot = T, paste0(output_path, 'figureS_constrained_2',tranche, '_', test,'.png'))

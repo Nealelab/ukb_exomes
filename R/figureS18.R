@@ -34,24 +34,6 @@ figureS18 = function(save_plot=F, output_path){
             axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) ) +
     facet_grid(~type)
 
-  # figure2  = var_sig_after %>%
-  #   group_by(annotation) %>% sig_cnt_summary('all_sig_pheno_cnt') %>%
-  #   mutate(annotation = factor(annotation, levels = annotation_types)) %>%
-  #   ggplot + aes(x = annotation, y = prop, ymin = prop-sd, ymax = prop+sd, color = annotation, fill = annotation) +
-  #   geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
-  #   labs(y = 'Proportion', x = NULL)  +
-  #   scale_y_continuous(label = label_percent(accuracy = 1)) +
-  #   scale_x_discrete(labels = annotation_names) +
-  #   annotation_color_scale + annotation_fill_scale  +
-  #   theme_classic() + themes+
-  #   theme(panel.spacing = unit(0, "lines"),
-  #           strip.background = element_blank(),
-  #           strip.placement = "outside",
-  #           strip.text = element_text(face = 'bold'),
-  #           axis.text= element_text(size = 10),
-  #           axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
-  #
-  # figure = ggarrange(figure1, figure2, labels = c('(A) SKAT-O', '(B) Single-Variant'), nrow=2, label.args = list(gp = gpar(font = 2, cex = 1), vjust = 2))
   if(save_plot){
       png(output_path, height = 3, width = 5, units = 'in', res = 300)
       print(figure)
