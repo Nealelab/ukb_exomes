@@ -623,7 +623,7 @@ save_prop_by_annt_freq_figure_500k = function(matched_summary, output_path, save
             axis.text= element_text(size = 10),
             axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
   if(save_plot){
-    png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
+    png(output_path, height = 3, width = 5, units = 'in', res = 300)
     print(plt)
     dev.off()
   }

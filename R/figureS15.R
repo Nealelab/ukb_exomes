@@ -29,7 +29,7 @@ figureS15 = function(save_plot = F, output_path){
     annotation_color_scale + annotation_fill_scale + themes +
     facet_grid(result_type~annotation, scale = 'free', labeller = label_type) +
     geom_text(data = gene_cnt, aes(label = paste('Genes with \n lambda>2: ',as.character(cnt)),
-                                         x = 1.5, y = 2.5,  face = 'bold', color = annotation, group = NULL), size = 3)
+                                         x = 1.5, y = 1.75,  face = 'bold', color = annotation, group = NULL), size = 3)
   if(save_plot){
     png(output_path, height = 5, width = 7.5, units = 'in', res = 300)
     print(figure)
