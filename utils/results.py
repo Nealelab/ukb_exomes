@@ -1618,6 +1618,18 @@ def drop_pheno_fields_mt(mt: hl.MatrixTable):
     """
     return mt.drop("Abbvie_Priority", "Biogen_Priority", "Pfizer_Priority", "score")
 
+def modify_n_case_control(mt):
+    """
+    Reannotate n_cases and n_controls
+    :param MatrixTable mt: Input original result Matrixtable
+    :return: hl.MatrixTable with fields defined
+    :rtype: hl.MatrixTable
+    """
+    mt = mt.annotate_cols(n_cases = hl.if_else(hl.is_defined(mt.n_cases), mt.n_cases, mt['N.Cases']),
+                          n_controls = hl.if_else(hl.is_defined(mt.n_controls), mt.n_controls, mt['N.Controls']))
+    mt = mt.drop('N.Cases', 'N.Controls')
+    return mt
+
 
 def annotate_pheno_qc_metric_mt(
     mt: hl.MatrixTable, lambda_min: float = 0.75, tranche: str = CURRENT_TRANCHE

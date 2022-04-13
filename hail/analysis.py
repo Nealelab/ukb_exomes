@@ -21,14 +21,23 @@ def main(args):
     if args.update_main_tables:
         gene_mt = modify_phenos_mt("gene")
         logger.info(f"Updated main gene result table: {gene_mt.count()}")
+        var_mt = modify_phenos_mt("variant")
+        logger.info(f"Updated main variant result table: {var_mt.count()}")
+
+        logger.info(f"Modifying n_cases and n_controls")
+        pheno_ht = var_mt.cols()
+        gene_mt = gene_mt.annotate_cols(**pheno_ht[gene_mt.col_key])
+        gene_mt = modify_n_case_control(gene_mt)
+        var_mt = modify_n_case_control(var_mt)
+
+        logger.info(f"{'Overw' if args.overwrite else 'W'}riting main gene result Matrixtable")
         gene_mt.write(get_results_mt_path("gene"), overwrite=args.overwrite)
 
+        logger.info(f"{'Overw' if args.overwrite else 'W'}riting main phenotype Table")
         gene_mt.cols().write(
             get_results_mt_path("phenotype", extension="ht"), overwrite=args.overwrite
         )
-
-        var_mt = modify_phenos_mt("variant")
-        logger.info(f"Updated main variant result table: {var_mt.count()}")
+        logger.info(f"{'Overw' if args.overwrite else 'W'}riting main variant result Matrixtable")
         var_mt.write(get_results_mt_path("variant"), overwrite=args.overwrite)
 
     if args.update_util_tables:
@@ -174,6 +183,61 @@ def main(args):
             get_ukb_exomes_sumstat_path(
                 subdir="qc",
                 dataset="variant_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            ),
+            overwrite=args.overwrite,
+        )
+
+    if args.update_qc_result_tables:
+        gene_ht = hl.read_table(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc",
+                dataset="gene_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            )
+        )
+        gene_ht.write(
+            get_ukb_exomes_sumstat_path(
+                subdir="results",
+                dataset="gene_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            ),
+            overwrite=args.overwrite,
+        )
+
+        var_ht = hl.read_table(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc",
+                dataset="variant_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            )
+        )
+        var_ht.write(
+            get_ukb_exomes_sumstat_path(
+                subdir="results",
+                dataset="variant_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            ),
+            overwrite=args.overwrite,
+        )
+
+        pheno_ht = hl.read_table(
+            get_ukb_exomes_sumstat_path(
+                subdir="qc",
+                dataset="pheno_qc_metrics_ukb_exomes",
+                result_type="",
+                extension="ht",
+            )
+        )
+        pheno_ht.write(
+            get_ukb_exomes_sumstat_path(
+                subdir="results",
+                dataset="pheno_qc_metrics_ukb_exomes",
                 result_type="",
                 extension="ht",
             ),
@@ -350,6 +414,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update_qc_tables",
+        help="Update the tables with QC metrics",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update_qc_result_tables",
         help="Update the tables with QC metrics",
         action="store_true",
     )
