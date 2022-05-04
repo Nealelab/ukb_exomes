@@ -3,7 +3,7 @@ detach(package:plyr)
 
 var_sig_after = load_ukb_file(paste0('var_sig_cnt_filtered_', test, '_', tranche,'.txt.bgz'), subfolder = 'analysis/' ,force_cols = var_cols)
 
-figureS20 = function(save_plot = F, output_path){
+figureS20 = function(save_plot = F, save_pdf = F, output_path){
   polyphen_sum = var_sig_after %>%
     filter(AF <= 0.1 & AF > 0.0001) %>%
     filter(!is.na(polyphen2) & polyphen2 != 'unknown') %>%
@@ -43,7 +43,9 @@ figureS20 = function(save_plot = F, output_path){
           strip.placement = "outside",
           strip.text = element_text(face = 'bold'),
           axis.text= element_text(size = 9),
-          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) ) +
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95),
+          legend.title = element_text(size = 8, face = 'bold'),
+          legend.text = element_text(size = 7),) +
     geom_segment(data = annt_sig, size = .6, aes(x = x, y = y, xend = xend, yend = y)) +
     geom_text(data = annt_sig, aes(x = (x+xend)/2, y = y, label = sig_label), size = 6)
 
@@ -52,7 +54,13 @@ figureS20 = function(save_plot = F, output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 90/in2mm, width = 114/in2mm)
+    print(figure)
+    dev.off()
+  }
   return(figure)
 }
 
-figureS20(save_plot = T, output_path = paste0(output, 'figureS20_polyphen_',tranche, '_', test,'.png'))
+figureS20(save_plot = T, save_pdf = T, output_path = paste0(output, 'final_pdf_figures/figureS20_polyphen_',tranche, '_', test,'.pdf'))
+# figureS20(save_plot = T, output_path = paste0(output, 'figureS20_polyphen_',tranche, '_', test,'.png'))

@@ -6,7 +6,7 @@ rp_gene_p_value_skato  = load_ukb_file('rp_gene_p_value_skato_300k.txt.bgz', sub
 rp_gene_p_value_burden = load_ukb_file('rp_gene_p_value_burden_300k.txt.bgz', subfolder = 'analysis/')
 rp_var_p_value  = load_ukb_file('rp_var_p_value300k.txt.bgz', subfolder = 'analysis/')
 
-figureS8 = function(save_plot = F, direction = 'long', output_path){
+figureS8 = function(save_plot = F, save_pdf = F, direction = 'long', output_path){
   var_p_value = format_random_pheno_p_data(rp_var_p_value, test_type = 'Single-Variant')
   gene_p_value_skato = format_random_pheno_p_data(rp_gene_p_value_skato, test_type = 'SKAT-O')
   gene_p_value_burden = format_random_pheno_p_data(rp_gene_p_value_burden, test_type = 'Burden Test')
@@ -59,10 +59,16 @@ figureS8 = function(save_plot = F, direction = 'long', output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 232/in2mm, width = 174/in2mm)
+    print(figure)
+    dev.off()
+  }
   return(figure)
 }
 
-figureS8(save_plot = T, output_path = paste0(output_path, 'figureS8_random_pheno_qq_plot.png'))
+figureS8(save_plot = F, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS8_random_pheno_qq_plot.pdf'))
+# figureS8(save_plot = T, output_path = paste0(output_path, 'figureS8_random_pheno_qq_plot.png'))
 
 
 

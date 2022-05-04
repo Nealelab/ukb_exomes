@@ -18,9 +18,10 @@ source('~/ukbb_pan_ancestry/constants.R')
 
 tranche = '500k'
 test = 'skato'
-path_to = '~/Desktop/ukb_exomes_450k/'
-output = '~/Desktop/ukb_exomes_450k/'
-output_path = '~/Desktop/ukb_exomes_450k/'
+path_to = '~/Dropbox (Partners HealthCare)/analysis/ukb_exomes_450k/'
+output = '~/Dropbox (Partners HealthCare)/analysis/ukb_exomes_450k/'
+output_path = '~/Dropbox (Partners HealthCare)/analysis/ukb_exomes_450k/'
+in2mm = 25.4
 
 
 
@@ -44,7 +45,8 @@ caf_names = c(paste0('CAF:[0 , 0.0001]'), 'CAF:(0.0001, 0.001]', 'CAF:(0.001, 0.
 ac_types = c('(0, 5]', '(5, 50]', '(50, 500]', '(500, 5000]', '(5000, 50000]', '(50000, )')
 ac_names = c('(0, 5]', '(5, 50]', '(50, 500]', '(500, 5000]', '(5000, 50000]', paste0('(50000, ', bquote("\U221E"), ' )'))
 gene_list_names = c('Constrained' = 'Constrained', 'Developmental Delay' = 'Developmental\nDelay', 'all_ad' = 'Autosomal dominant', 'all_ar' = 'Autosomal recessive', 
-                    'fda_approved_drug_targets' = 'FDA approved\ndrug targets', 'gwascatalog' = 'GWAS catalog', 'CEGv2_subset_universe' = 'Cell essential', 'NEGv1_subset_universe' = 'Cell non-essential')
+                    'fda_approved_drug_targets' = 'FDA approved\ndrug targets', 'gwascatalog' = 'GWAS catalog')
+  #, 'CEGv2_subset_universe' = 'Cell essential', 'NEGv1_subset_universe' = 'Cell non-essential')
 icd_names = c('A' = 'Infectious', 'B' = 'Infectious','C' = 'Neoplasms', 'D' = 'Blood/immune', 'E' = 'Endocrine/metabolic', 'F' = 'Mental/behavioral', 'G' = 'Nervous', 'H1' = 'Eye',
               'H2' =  'Ear', 'I' = 'Circulatory', 'J' = 'Respiratory', 'K' = 'Digestive', 'L' = 'Skin/subcutaneous', 'M' = 'Musculoskeletal', 'N' = 'Genitourinary', 'O' = 'Pregnancy',
               'P' = 'Perinatal', 'Q' = 'Congenital', 'R' = 'Symptoms', 'S' = 'Injury/poison', 'T' = 'Injury/poison', 'V' = 'External causes', 'Y' = 'External causes', 'Z' = 'Health Factors')
@@ -246,7 +248,7 @@ save_group_matched_figure2 = function(matched_summary, levels, labels, group_col
     geom_pointrange(stat = "identity", position = position_dodge(width = 2)) +
     labs(y = 'Proportion', x = x_lab)  +
     scale_color_manual(name = x_lab, values = c("#D95F02", "#7570B3", "#1B9E77")) +
-    scale_y_continuous(label = label_percent(accuracy = 1)) +
+    scale_y_continuous(label = label_percent(accuracy = 1), limits = c(0, 1.05)) +
     scale_x_discrete(labels = levels) +
     theme_classic() + themes +
     facet_grid(~interval) +
@@ -561,20 +563,21 @@ save_icd_manhattan_figure = function(data, p_filter = 1e-2, width = 10, spacing 
   icd_mh_plt = data %>%
     filter(min_p < p_filter) %>%
     ggplot + aes(x = pos, y = -log10(min_p), color = icd10) +
-    geom_point(size = 0.75) +
+    geom_point_rast(size = 0.75) +
     geom_hline(yintercept = -log10(sig_level), lty = 2)+
     scale_x_continuous(breaks = ctr, labels = icd_names[icd_labels]) +
     scale_color_manual(values = icd_colors) +
-    scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
+    # scale_y_continuous(trans = gwas_loglog_trans(), breaks = loglog_breaks, name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
+    scale_y_continuous(trans = gwas_loglog_trans(), breaks = c(seq(2, 10, 2), 20, 50, 100, 200, 400), name = expression(bold(paste('-log'[10], '(', italic(p), ')'))))+
     labs(x = NULL, y = expression(bold(paste('-log'[10], '(', italic(p), ')')))) +
     theme_classic()   + themes +
     theme(legend.position = 'none', 
-          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 12),
-          axis.text.y = element_text(size = 12),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95, size = 7),
+          axis.text.y = element_text(size = 7),
           plot.margin = margin(0.8, 0.1, 0.1, 0.1, "cm"), 
-          axis.title = element_text(size = 14),
-          legend.title = element_text(size = 12, face = 'bold'),
-          legend.text = element_text(size = 12), )
+          axis.title = element_text(size = 8),
+          legend.title = element_text(size = 8, face = 'bold'),
+          legend.text = element_text(size = 8), )
   if(save_plot){
     png(output_path, height = 4, width = 6, units = 'in', res = 300)
     print(icd_mh_plt)
@@ -619,9 +622,14 @@ save_prop_by_annt_freq_figure_500k = function(matched_summary, output_path, save
       theme(panel.spacing = unit(0, "lines"),
             strip.background = element_blank(),
             strip.placement = "outside",
-            strip.text = element_text(face = 'bold'),
-            axis.text= element_text(size = 10),
-            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
+            strip.text = element_text(size = 8, face = 'bold'),
+            axis.title = element_text(size = 9),
+            axis.text = element_text(size = 7),
+            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95),
+            legend.key.size = unit(0.5, 'cm'),
+        # axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
+        legend.title = element_text(size = 8, face = 'bold'),
+        legend.text = element_text(size = 7))
   if(save_plot){
     png(output_path, height = 3, width = 5, units = 'in', res = 300)
     print(plt)
@@ -639,11 +647,12 @@ save_count_barplot_figure = function(cnt_data, cnt_type, save_plot = F, output_p
     scale_alpha_discrete(range = c(0.5, 1)) +
     labs(y = paste('Number of', cnt_type), x = NULL, alpha = NULL) +
     annotation_color_scale + annotation_fill_scale + themes +
-    geom_text(aes(label = cnt), vjust = -0.3, size = 3, position = position_dodge(width = 1), color = '#187bcd') +
+    geom_text(aes(label = cnt), vjust = -0.1, size = 2, position = position_dodge(width = 1), color = '#187bcd') +
     theme_classic() + themes + theme(legend.position = 'none')+
-    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
-          axis.title = element_text(size = 10), 
-          axis.text = element_text(size = 10), 
+    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"),
+          axis.title = element_text(size = 8),
+          axis.text = element_text(size = 7),
+          #axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
           legend.title = element_text(size = 8, face = 'bold'), 
           legend.text = element_text(size = 8), )
   if(save_plot){
@@ -666,13 +675,15 @@ save_count_by_freq_figure = function(cnt_data, type, save_plot = F, output_path)
   scale_y_continuous(label = comma) +
   labs(y = paste('Number of', type), x = paste(freq, 'Interval'))+
   annotation_color_scale + annotation_fill_scale + themes +
-  geom_text(aes(label = cnt, color = annotation), vjust = -0.3, size = 2, position = position_dodge(width = 1)) +
+  geom_text(aes(label = cnt, color = annotation), vjust = -0.1, size = 2, position = position_dodge(width = 1)) +
   theme_classic() + themes +
   theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"), 
-        axis.title = element_text(size = 10),
-        axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
+        axis.title = element_text(size = 8),
+        axis.text = element_text(size = 7),
+        legend.key.size = unit(0.5, 'cm'),
+        # axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
         legend.title = element_text(size = 8, face = 'bold'), 
-        legend.text = element_text(size = 8))
+        legend.text = element_text(size = 7))
   if(save_plot){
     png(output_path, height = 4, width = 6, units = 'in', res = 300)
     print(plt)

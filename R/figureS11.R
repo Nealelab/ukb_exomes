@@ -1,7 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 
-figureS11 = function(result_type, save_plot = F, output_path){
+figureS11 = function(result_type, save_plot = F, save_pdf = F, output_path){
   if(result_type == 'gene'){
     gene_lambda = load_ukb_file(paste0('lambda_by_pheno_expected_ac_filtered_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
     lambda = gene_lambda %>%
@@ -28,6 +28,11 @@ figureS11 = function(result_type, save_plot = F, output_path){
       theme(axis.text.x = element_text(size = 9, angle = 45, vjust = 0.8))
     if(save_plot){
       png(output_path, height = 5, width = 8, units = 'in', res = 300)
+      print(figure)
+      dev.off()
+    }
+    if(save_pdf){
+      pdf(output_path, height = 105/in2mm, width = 174/in2mm)
       print(figure)
       dev.off()
     }
@@ -59,7 +64,8 @@ figureS11 = function(result_type, save_plot = F, output_path){
   return(figure)
 }
 
-figureS11('gene', save_plot = T, output_path = paste0(output_path, 'figureS11_lambda_expected_ac_gene.png'))
+figureS11('gene', save_plot = T, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS11_lambda_expected_ac_gene.pdf'))
+# figureS11('gene', save_plot = T, output_path = paste0(output_path, 'figureS11_lambda_expected_ac_gene.png'))
 
 
 

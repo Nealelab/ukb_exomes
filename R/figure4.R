@@ -8,7 +8,7 @@ gene_DD = load_ukb_file('forKonrad_sig31kDNM_consensus_genes_2021_01_12.txt', su
 setwd('~/gene_lists/lists/')
 gene_sig_after = gene_sig_after %>%
   filter(annotation != 'pLoF|missense|LC')
-figure4 = function(save_plot = F, output_path){
+figure4 = function(save_plot = F, save_pdf = F, output_path){
   universe = as.data.frame(fread('universe.tsv', quote="", header = F))
   gene_universe = gene_sig_after %>% filter(gene_symbol %in% universe[, 1])
 
@@ -35,7 +35,7 @@ figure4 = function(save_plot = F, output_path){
            gene_set_name = factor(gene_set_name, levels = names(gene_list_names)), 
            group = factor(group, levels = c('Background', 'Test Set')))
   print(matched)
-  matched$panel = c(rep(rep(c(1, 2), each = 6), 4))
+  matched$panel = c(rep(rep(c(1, 2), each = 6), 3))
 
   matched_test_fisher = matched %>%
     mutate(no_sig_cnt = cnt - sig_cnt) %>%
@@ -52,13 +52,19 @@ figure4 = function(save_plot = F, output_path){
   figure4_p2 = matched %>% filter(panel == 2) %>% save_subset_matched_figure2(., matched_test_fisher%>% filter(panel == 2))
   figure = ggpubr::ggarrange(figure4_p1, figure4_p2, ncol = 2, common.legend = TRUE)
   if(save_plot){
-    png(output_path, height = 10, width = 7.5, units = 'in', res = 300)
+    png(output_path, height = 8, width = 7.5, units = 'in', res = 300)
+    print(figure)
+    dev.off()
+  }
+  if(save_pdf){
+    pdf(output_path, height = 174/in2mm, width = 174/in2mm)
     print(figure)
     dev.off()
   }
   return(figure)
 }
 
-figure4(save_plot = T, output_path = paste0(output, 'figure4_gene_list_matching_', test, '.png'))
+figure4(save_plot = F, save_pdf = T, output_path = paste0(output, 'final_pdf_figures/figure4_gene_list_matching_', test, '.pdf'))
+# figure4(save_plot = T, output_path = paste0(output, 'figure4_gene_list_matching_', test, '.png'))
 
 
