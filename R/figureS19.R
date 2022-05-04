@@ -25,10 +25,14 @@ save_prop_by_annt_freq_figure_500k_supp = function(matched_summary, type, output
             strip.background = element_blank(),
             strip.placement = "outside",
             strip.text = element_text(face = 'bold'),
-            axis.text= element_text(size = 10),
-            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) ) +
+            axis.text= element_text(size = 8),
+            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95),
+            legend.key.size = unit(0.5, 'cm'),
+            axis.title.y = element_text(size = 9, face = 'bold'),
+            legend.title = element_text(size = 8, face = 'bold'),
+            legend.text = element_text(size = 7),) +
     # scale_x_discrete(labels = c(matched_summary$labels)) +
-    geom_text(aes(y = 0.002, label=paste(cnt, type), vjust = -1), size = 2)
+    geom_text(aes(y = 0.002, label=paste(cnt, type), vjust = -1), size = 1.9)
   if(save_plot){
     png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
     print(plt)
@@ -37,7 +41,7 @@ save_prop_by_annt_freq_figure_500k_supp = function(matched_summary, type, output
   return(plt)
 }
 
-figureS19 <- function(save_plot=F, output_path){
+figureS19 <- function(save_plot=F, save_pdf = F, output_path){
   if(tranche=='500k'){
     gene_sig_sum = format_sig_cnt_summary_data_500k(gene_sig_after, freq_col = 'CAF', sig_col = 'all_sig_pheno_cnt')
     var_sig_sum = format_sig_cnt_summary_data_500k(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
@@ -54,7 +58,16 @@ figureS19 <- function(save_plot=F, output_path){
       print(figure)
       dev.off()
   }
+  if(save_pdf){
+    ggsave(filename=output_path, plot=figure, device=cairo_pdf,
+       width = 114/in2mm, height = 140/in2mm, units = "in", dpi = 300)
+    # pdf(output_path, height = 140/in2mm, width = 114/in2mm)
+    # print(figure)
+    # dev.off()
+  }
   return(figure)
 }
 
-figureS19(save_plot = T, paste0(output_path, 'figureS19_common_variant_gene_',tranche, '_', test,'.png'))
+figureS19(save_plot = T, save_pdf = T, paste0(output_path, 'final_pdf_figures/figureS19_common_variant_gene_',tranche, '_', test,'.pdf'))
+# figureS19(save_plot = T, paste0(output_path, 'figureS19_common_variant_gene_',tranche, '_', test,'.png'))
+

@@ -1,7 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 
-figureS15 = function(save_plot = F, output_path){
+figureS15 = function(save_plot = F, save_pdf = F, output_path){
   lambda_by_gene = load_ukb_file(paste0('lambda_by_gene_filtered_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
   if(tranche == '500k'){
     lambda_by_gene = lambda_by_gene %>%
@@ -35,7 +35,13 @@ figureS15 = function(save_plot = F, output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 116/in2mm, width = 174/in2mm)
+    print(figure)
+    dev.off()
+  }
   return(figure)
 }
-figureS15(save_plot = T, output_path = paste0(output_path, 'figureS15_lambda_dist_by_gene_filtered.png'))
+figureS15(save_plot = T, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS15_lambda_dist_by_gene_filtered.pdf'))
+# figureS15(save_plot = T, output_path = paste0(output_path, 'figureS15_lambda_dist_by_gene_filtered.png'))
 

@@ -9,7 +9,7 @@ if(tranche=='500k'){
     filter(annotation != 'pLoF|missense|LC')
 }
 
-figureS18 = function(save_plot=F, output_path){
+figureS18 = function(save_plot=F, save_pdf = F, output_path){
   sum = rbind(
     gene_sig_after %>%
     group_by(annotation) %>% sig_cnt_summary('all_sig_pheno_cnt') %>% mutate(type = "SKAT-O"),
@@ -39,6 +39,12 @@ figureS18 = function(save_plot=F, output_path){
       print(figure)
       dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 70/in2mm, width = 114/in2mm)
+    print(figure)
+    dev.off()
+  }
   return(figure)
 }
-figureS18(save_plot = T, paste0(output_path, 'figureS18_proportion_no_freq_matching_',tranche, '_', test,'.png'))
+figureS18(save_plot = T, save_pdf = T, paste0(output_path, 'final_pdf_figures/figureS18_proportion_no_freq_matching_',tranche, '_', test,'.pdf'))
+# figureS18(save_plot = T, paste0(output_path, 'figureS18_proportion_no_freq_matching_',tranche, '_', test,'.png'))

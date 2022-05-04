@@ -1,8 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
-output_path = '~/Desktop/final_figures/'
 
-figureS17 = function(type = 'full', save_plot = F, output_path){
+figureS17 = function(type = 'full', save_plot = F, save_pdf = F, output_path){
   height_UKB  = load_ukb_file('height_beta_500k.txt.bgz', subfolder = 'analysis/', force_cols = cols(locus = col_character())) %>%
     separate(markerID, c("chrom", "position", "REF", "ALT"), sep = "[^[:alnum:]]") %>%
     mutate(locus = new_locus)
@@ -35,8 +34,14 @@ figureS17 = function(type = 'full', save_plot = F, output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 85/in2mm, width = 85/in2mm)
+    print(figure)
+    dev.off()
+  }
   return(figure)
 }
 
-figureS17(type = 'full', save_plot = T, output_path = paste0(output_path, 'figureS17_giant_height_comparison_full.png'))
-figureS17(type = 'sub', save_plot = T, output_path = paste0(output_path, 'figureS17_giant_height_comparison_sub.png'))
+figureS17(type = 'sub', save_plot = T, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS17_giant_height_comparison_sub.pdf'))
+# figureS17(type = 'full', save_plot = T, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS17_giant_height_comparison_full.pdf'))
+# figureS17(type = 'sub', save_plot = T, output_path = paste0(output_path, 'figureS17_giant_height_comparison_sub.png'))

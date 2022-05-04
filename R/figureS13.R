@@ -1,7 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 
-figureS13 = function(save_plot = T, output_path){
+figureS13 = function(save_plot = T, save_pdf = F, output_path){
    lambda_by_gene_before_coverage  = load_ukb_file(paste0('lambda_by_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
   if(tranche == '500k'){
     lambda_by_gene_before_coverage = lambda_by_gene_before_coverage %>%
@@ -46,7 +46,16 @@ figureS13 = function(save_plot = T, output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    ggsave(filename=output_path, plot=figure, device=cairo_pdf,
+       width = 174/in2mm, height = 232/in2mm, units = "in", dpi = 300)
+    # pdf(output_path, height = 232/in2mm, width = 174/in2mm)
+    # print(figure)
+    # dev.off()
+  }
   return(figure)
 }
-figureS13(save_plot = T, output_path = paste0(path_to, 'figureS13_lambda_by_gene_by_coverage.png'))
+
+figureS13(save_plot = T, save_pdf = T, output_path = paste0(path_to, 'final_pdf_figures/figureS13_lambda_by_gene_by_coverage.pdf'))
+# figureS13(save_plot = T, output_path = paste0(path_to, 'figureS13_lambda_by_gene_by_coverage.png'))
 

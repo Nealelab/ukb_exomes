@@ -1,6 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 
+test = 'burden'
 pheno_sig_after = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_gene_', tranche,'.txt.bgz'), subfolder = 'analysis/') %>%
   select(phenocode, description, all_sig_gene_cnt)
 pheno_sig_after_var = load_ukb_file(paste0('pheno_sig_cnt_filtered_', test, '_var_', tranche,'.txt.bgz'), subfolder = 'analysis/') %>%
@@ -31,7 +32,19 @@ figure3c = function(save_plot=F, output_path){
     # scale_x_discrete(labels = c('Acceptor', 'Donor')) +
     scale_color_manual(name = 'Mean proportion expressed', values = c("#084594", "#9ECAE1", "#4292C6")) +
     scale_fill_manual(name = 'Mean proportion expressed', values = c("#084594", "#9ECAE1", "#4292C6")) +
-    theme_classic() + themes + theme(panel.spacing = unit(1, "lines"))
+    theme_classic() + themes +
+    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"),,
+          panel.spacing = unit(1, "lines"),
+          strip.background = element_blank(),
+          strip.placement = "outside",
+          strip.text = element_text(size = 8, face = 'bold'),
+          axis.title = element_text(size = 9),
+          axis.text = element_text(size = 7),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95),
+          legend.key.size = unit(0.5, 'cm'),
+        # axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
+        legend.title = element_text(size = 8, face = 'bold'),
+        legend.text = element_text(size = 7))
   if(save_plot){
     png(output_path, height = 4, width = 7.5, units = 'in', res = 300)
     print(figure)
@@ -40,7 +53,7 @@ figure3c = function(save_plot=F, output_path){
   return(figure)
 }
 
-figure3 = function(save_plot = F, output_path){
+figure3 = function(save_plot = F, save_pdf = F, output_path){
   if(tranche=='500k'){
     var_sig_sum = format_sig_cnt_summary_data_500k(var_sig_after, freq_col = 'AF', sig_col = 'all_sig_pheno_cnt')
     figure3a = save_prop_by_annt_freq_figure_500k(var_sig_sum, output_path = paste0(output, 'figure3a_',tranche, '_', test,'_single.png'), save_plot = save_plot)
@@ -69,20 +82,32 @@ figure3 = function(save_plot = F, output_path){
                               labels = c( 'Pathogenic/Likely Pathogenic', 'Uncertain significance', 'Benign/Likely Benign'),
                               group_col = 'pathogenicity', x_lab = 'ClinVar Pathogenicity', output_path = paste0(output, 'figure3d_',tranche, '_', test,'.png'), save_plot = F) +
     facet_grid(~interval, switch = "x", scales = "free_x", space = "free_x", labeller = label_type) +
-    theme(panel.spacing = unit(0, "lines"),
+    theme(plot.margin = margin(0.5, 0.1, 0.1, 0.1, "cm"),
+          panel.spacing = unit(0, "lines"),
           strip.background = element_blank(),
           strip.placement = "outside",
-          strip.text = element_text(face = 'bold'),
-          axis.text= element_text(size = 10),
-          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95) )
-  figure3 = ggarrange(figure3a, figure3b, figure3c, figure3d, labels = c('(A) Single-Variant', '(B) Burden', '(C) Splice Variants', '(D) ClinVar Pathogenicity'), nrow=4, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
+          strip.text = element_text(size = 8, face = 'bold'),
+          axis.title = element_text(size = 9),
+          axis.text = element_text(size = 7),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 0.95),
+          legend.key.size = unit(0.5, 'cm'),
+        # axis.text.x = element_text(angle = 30,  vjust = 1, hjust = 0.95),
+        legend.title = element_text(size = 8, face = 'bold'),
+        legend.text = element_text(size = 7))
+  figure = ggarrange(figure3a, figure3b, figure3c, figure3d, labels = c('(A) Single-Variant', '(B) Burden', '(C) Splice Variants', '(D) ClinVar Pathogenicity'), nrow=4, label.args = list(gp = gpar(font = 2, cex = 0.75), vjust = 2))
   if(save_plot){
       png(output_path, height = 12, width = 5, units = 'in', res = 300)
-      print(figure3)
+      print(figure)
       dev.off()
   }
-  return(figure3)
+  if(save_pdf){
+    pdf(output_path, height = 228/in2mm, width = 114/in2mm)
+    print(figure)
+    dev.off()
+  }
+  return(figure)
 }
 
-figure3(save_plot = T, paste0(output, 'figure3_', tranche,'_', test, '.png'))
+figure3(save_plot = F, save_pdf = T,output_path = paste0(output, 'final_pdf_figures/figure3_', test, '.pdf'))
+# figure3(save_plot = T, paste0(output, 'figure3_', tranche,'_', test, '.png'))
 

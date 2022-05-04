@@ -1,7 +1,7 @@
 source('~/ukb_exomes/R/constants.R')
 detach(package:plyr)
 
-figureS12 = function(save_plot = F, output_path){
+figureS12 = function(save_plot = F, save_pdf = F, output_path){
   lambda_gene_full_before = load_ukb_file(paste0('lambda_by_pheno_full_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
   lambda_gene_full_after = load_ukb_file(paste0('lambda_by_pheno_full_filtered_gene_', tranche,'.txt.bgz'), subfolder = 'qc/lambda_gc/')
 
@@ -38,7 +38,15 @@ figureS12 = function(save_plot = F, output_path){
     print(figure)
     dev.off()
   }
+  if(save_pdf){
+    pdf(output_path, height = 116/in2mm, width = 174/in2mm)
+    print(figure)
+    dev.off()
+  }
+
   return(figure)
 }
-figureS12(save_plot = T, output_path = paste0(output_path, 'figureS12_lambda_gene_before_after_filter.png'))
+
+figureS12(save_plot = T, save_pdf = T, output_path = paste0(output_path, 'final_pdf_figures/figureS12_lambda_gene_before_after_filter.pdf'))
+# figureS12(save_plot = T, output_path = paste0(output_path, 'figureS12_lambda_gene_before_after_filter.png'))
 
