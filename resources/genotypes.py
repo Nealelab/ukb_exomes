@@ -76,9 +76,12 @@ def get_filtered_mt(interval: str = None, adj=False, interval_filter=False, tran
     elif tranche == '200k':
         mt = mt.filter_cols(mt.meta.high_quality & ~mt.meta.duplicate &
                             hl.set(TRANCHE_POPS[tranche]).contains(mt.meta.hybrid_pop))
-    else:
+    elif tranche == '300k':
         mt = mt.filter_cols(mt.meta.sample_filters.high_quality & ~mt.meta.sample_filters.duplicate &
                             (mt.meta.gnomad_pc_project_pop_data.pop == 'nfe'))
+    else:
+        mt = mt.filter_cols(mt.meta.sample_filters.high_quality & ~mt.meta.sample_filters.duplicate &
+                            (mt.meta.pan_ancestry_meta.pop == 'EUR'))
     if interval_filter:
         mt = ukb_utils.annotate_interval_qc_filter(*TRANCHE_DATA[tranche], t=mt)
         mt = mt.filter_rows(mt.interval_qc_pass)

@@ -2,10 +2,15 @@
 
 __author__ = 'konradk'
 
+import sys
+print(sys.path)
+import subprocess
+subprocess.check_output(['unzip', sys.path[1]])
+subprocess.check_output(['ls'])
 import argparse
 from gnomad.utils.vep import process_consequences
 from gnomad.utils import slack
-from ukb_common import *
+from ukbb_common import *
 from ukb_exomes import *
 
 
@@ -26,11 +31,11 @@ def count_variants():
 
 
 def main(args):
-    hl.init(default_reference='GRCh38')
+    hl.init(default_reference='GRCh38', log='/pre_process.log')
 
     if args.create_plink_file:
         call_stats_ht = hl.read_table(ukb.var_annotations_ht_path('ukb_freq', *TRANCHE_DATA[CURRENT_TRANCHE]))
-        freq_index = hl.zip_with_index(call_stats_ht.freq_meta).find(lambda f: (hl.len(f[1]) == 1) & (f[1].get('group') == 'cohort'))[0]
+        freq_index = get_cohort_index(call_stats_ht)
         call_stats_ht = call_stats_ht.annotate(call_stats=call_stats_ht.freq[freq_index])
         hq_samples = call_stats_ht.aggregate(hl.agg.max(call_stats_ht.call_stats.AN) / 2)
         call_stats_ht = filter_ht_for_plink(call_stats_ht, hq_samples)
@@ -48,7 +53,7 @@ def main(args):
         if args.overwrite or not hl.hadoop_exists(f'{get_ukb_grm_plink_path()}.bed'):
             hl.export_plink(mt, get_ukb_grm_plink_path())
 
-        mt = get_filtered_mt()
+        mt = get_filtered_mt(semi_join_rows=True)
         if args.overwrite or not hl.hadoop_exists(get_ukb_samples_file_path()):
             with hl.hadoop_open(get_ukb_samples_file_path(), 'w') as f:
                 f.write('\n'.join(mt.ukbb_app_26041_id.collect()) + '\n')
@@ -57,12 +62,25 @@ def main(args):
         ht = hl.read_table(get_ukb_vep_path())
         qual_ht = hl.read_table(get_ukb_exomes_qual_ht_path(CURRENT_TRANCHE))
         qual_ht = qual_ht.filter(hl.len(qual_ht.filters) == 0)
-        ht = ht.filter(hl.is_defined(qual_ht[ht.key]))
-        gene_map_ht = create_gene_map_ht(ht)
+        call_stats_ht = hl.read_table(ukb.var_annotations_ht_path('ukb_freq', *TRANCHE_DATA[CURRENT_TRANCHE]))
+        freq_index = get_cohort_index(call_stats_ht)
+        max_an = call_stats_ht.aggregate(hl.struct(
+            autosomes=hl.agg.max(call_stats_ht.freq[freq_index].AN),
+            x=hl.agg.filter(call_stats_ht.locus.in_x_nonpar(), hl.agg.max(call_stats_ht.freq[freq_index].AN)),
+            y=hl.agg.filter(call_stats_ht.locus.in_y_nonpar(), hl.agg.max(call_stats_ht.freq[freq_index].AN))
+        ))
+        an = call_stats_ht.freq[freq_index].AN
+        call_stats_ht = call_stats_ht.filter(hl.case()
+            .when(call_stats_ht.locus.in_x_nonpar(), an > 0.8 * max_an.x)
+            .when(call_stats_ht.locus.in_y_nonpar(), an > 0.8 * max_an.y)
+            .default(an > 0.8 * max_an.autosomes))
+        ht = ht.annotate(freq=call_stats_ht[ht.key].freq)
+        ht = ht.filter(hl.is_defined(qual_ht[ht.key]) & hl.is_defined(ht.freq))
+        gene_map_ht = create_gene_map_ht(ht, freq_field=ht.freq[freq_index].AF)
         gene_map_ht.write(get_ukb_gene_map_ht_path(post_processed=False), args.overwrite)
 
         gene_map_ht = hl.read_table(get_ukb_gene_map_ht_path(post_processed=False))
-        gene_map_ht = post_process_gene_map_ht(gene_map_ht)
+        gene_map_ht = post_process_gene_map_ht(gene_map_ht, freq_cutoff=0.01)
         gene_map_ht.write(get_ukb_gene_map_ht_path(), args.overwrite)
 
     count_variants()
@@ -77,6 +95,12 @@ def main(args):
         n_variants=hl.agg.count()
     )
     ht.write(get_ukb_gene_summary_ht_path(), args.overwrite)
+
+
+def get_cohort_index(call_stats_ht):
+    freq_index = hl.zip_with_index(call_stats_ht.freq_meta).find(lambda f: (hl.len(f[1]) == 1) &
+                                                                           (f[1].get('group') == 'cohort'))[0]
+    return freq_index.collect()[0]
 
 
 if __name__ == '__main__':

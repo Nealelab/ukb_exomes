@@ -4,6 +4,7 @@ __author__ = 'konradk'
 
 import time
 
+import re
 import argparse
 from gnomad.utils import slack
 from ukb_common import *
@@ -13,9 +14,9 @@ from ukb_exomes import *
 root = f'{bucket}/{CURRENT_TRANCHE}/results'
 
 
-HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:5.5'
-SAIGE_DOCKER_IMAGE = 'wzhou88/saige:0.39.4'
-QQ_DOCKER_IMAGE = 'konradjk/saige_qq:0.2'
+HAIL_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/hail_utils:6.5'
+SAIGE_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/saige:0.3'
+QQ_DOCKER_IMAGE = 'gcr.io/ukbb-exome-pharma/saige_qq:0.1'
 
 
 def get_exclusions_200k():
@@ -32,26 +33,33 @@ def get_exclusions_200k():
     return exclusions
 
 
-def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False, tranche: str = CURRENT_TRANCHE,
-                      specific_phenos: str = None, min_cases: int = None):
+def get_phenos_to_run(limit: int = None, pilot: bool = False, specific_phenos: str = None, min_cases: int = None):
     ht = hl.read_matrix_table(get_ukb_pheno_mt_path()).cols()
-    exclusion_ht = hl.import_table(f'gs://ukbb-pharma-exome-analysis/{tranche}/{tranche}_phentoypes_removeflag.txt', impute=True, key=PHENO_KEY_FIELDS)
+    exclusion_ht = hl.import_table(f'gs://ukbb-pharma-exome-analysis/500k/450K_phentoypes_removeflag_vF04132021.txt',
+                                   impute=True, key=PHENO_KEY_FIELDS)
     ht = ht.annotate(keep=(exclusion_ht[ht.key]['status.remove'] != 'remove') | (ht.phenocode == 'COVID19') | ht.phenocode.startswith('random_'))
     if not min_cases:
         min_cases = MIN_CASES
+    cancer_phenos = hl.literal({"C15", "C16", "C17", "C18", "C187", "C19", "C20", "C21", "C22", "C25", "C32", "C34",
+                                "C43", "C44", "C50", "C51", "C53", "C54", "C541", "C56", "C61", "C62", "C64", "C67",
+                                "C71", "C73", "C77", "C78", "C79", "C80", "C81", "C82", "C83", "C84", "C85", "C88",
+                                "C90", "C91", "C92", "D05", "D06", "D25", "Z08", "Z09", "Z12", "Z80", "Z85"})
     ht = ht.filter(
         (
                 hl.set({'biogen', 'abbvie', 'pfizer'}).contains(ht.modifier) |
+                ht.phenocode.endswith('_pfe') |
+                cancer_phenos.contains(ht.phenocode) |
                 (
-                        (ht[f'n_cases_{sex}'] >= min_cases) &
-                        ((ht.score >= 1) | (ht.trait_type == 'icd_first_occurrence') | (ht.phenocode == 'COVID19')) &
-                        # (ht.phenocode.startswith('30')) & hl.is_missing(ht.score) &  # biomarkers
+                        (ht.n_cases_defined >= min_cases) &
+                        ((ht.score >= 1) | (ht.trait_type == 'icd_first_occurrence') |
+                         (ht.phenocode == 'COVID19') |
+                         (ht.phenocode.startswith('30') & hl.is_missing(ht.score))
+                         ) &  # biomarkers
                         ht.keep & (ht.modifier != 'raw') &
                         ~ht.description.contains('Source of report')
                 )
-        )
+        ) & hl.is_defined(ht.modifier)
     )
-    # ht.export(f'gs://ukbb-pharma-exome-analysis/{tranche}/{tranche}_phenos_to_run.txt.bgz')
     output = set([tuple(x[field] for field in PHENO_KEY_FIELDS) for x in ht.select().collect()])
 
     if pilot:
@@ -67,9 +75,8 @@ def get_phenos_to_run(sex: str, limit: int = None, pilot: bool = False, tranche:
 
 def main(args):
     hl.init(log='/tmp/saige_temp_hail.log')
-    sex = 'both_sexes'
 
-    phenos_to_run = get_phenos_to_run(sex, 1 if args.local_test else None, pilot=not args.run_all_phenos,
+    phenos_to_run = get_phenos_to_run(1 if args.local_test else None, pilot=not args.run_all_phenos,
                                       specific_phenos=args.phenos, min_cases=args.min_cases)
     logger.info(f'Got {len(phenos_to_run)} phenotypes...')
     if len(phenos_to_run) <= 20:
@@ -82,7 +89,7 @@ def main(args):
     relatedness_cutoff = '0.125'
     num_markers = 2000
     n_threads = 8
-    chromosomes = list(range(1, 23)) + ['X', 'Y']
+    chromosomes = ['X', 'Y']  # list(range(1, 23)) + ['X', 'Y']
 
     sparse_grm_root = f'{root}/grm/sparse'
     sparse_grm_extension = f'_relatednessCutoff_{relatedness_cutoff}_{num_markers}_randomMarkersUsed.sparseGRM.mtx'
@@ -93,7 +100,7 @@ def main(args):
         backend = hb.ServiceBackend(billing_project='ukb_pharma', bucket='ukb-pharma-exome-analysis-temp')
     p = hb.Batch(name='saige_exomes', backend=backend, default_image=SAIGE_DOCKER_IMAGE,
                  # default_memory='1Gi',
-                 default_storage='500Mi', default_cpu=n_threads)
+                 default_cpu=n_threads)
 
     sparse_grm = None
     analysis_type = "variant" if args.single_variant_only else "gene"
@@ -161,6 +168,8 @@ def main(args):
     chrom_lengths = hl.get_reference('GRCh38').lengths
 
     use_bgen = True  # args.use_bgen
+    group_file_only = True
+    common_variants_only = True
     vcf_dir = f'{root}/vcf'
     test_extension = 'bgen' if use_bgen else 'vcf.gz'
     overwrite_vcfs = args.create_vcfs
@@ -173,21 +182,23 @@ def main(args):
         chromosome = f'chr{chrom}'
         chrom_length = chrom_lengths[chromosome]
         for start_pos in range(1, chrom_length, chunk_size):
-            interval = get_interval(chrom_length, chromosome, chunk_size, start_pos)
+            interval, long_interval = get_intervals(chrom_length, chromosome, chunk_size, start_pos)
             vcf_root = f'{vcf_dir}/test_{chromosome}_{str(start_pos).zfill(9)}'
-            if f'{vcf_root}.{test_extension}' in vcfs_already_created:
-                if use_bgen:
-                    vcf_file = p.read_input_group(**{'bgen': f'{vcf_root}.bgen',
-                                                     'bgen.bgi': f'{vcf_root}.bgen.bgi',
-                                                     'sample': f'{vcf_root}.sample'})
-                else:
-                    vcf_file = p.read_input_group(**{'vcf.gz': f'{vcf_root}.vcf.gz',
-                                                     'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
+            if not overwrite_vcfs and f'{vcf_root}.{test_extension}' in vcfs_already_created or args.skip_vcfs:
+                if f'{vcf_root}.{test_extension}' not in vcfs_already_created:
+                    continue
+                vcf_file = get_vcf_file(p, use_bgen, vcf_root)
                 group_file = p.read_input(f'{vcf_root}.gene.txt')
             else:
-                vcf_task = extract_vcf_from_mt(p, vcf_root, HAIL_DOCKER_IMAGE, interval=interval, export_bgen=use_bgen,
-                                               n_threads=n_threads, gene_map_ht_path=get_ukb_gene_map_ht_path(), additional_args=interval)
-                vcf_file = vcf_task.out
+                vcf_task = extract_vcf_from_mt(p, vcf_root, HAIL_DOCKER_IMAGE, interval=long_interval,
+                                               gene_ht_interval=interval, export_bgen=use_bgen,
+                                               n_threads=n_threads, gene_map_ht_path=get_ukb_gene_map_ht_path(),
+                                               additional_args=interval, group_file_only=group_file_only,
+                                               common_variants_only=common_variants_only)
+                if group_file_only:
+                    vcf_file = get_vcf_file(p, use_bgen, vcf_root)
+                else:
+                    vcf_file = vcf_task.out
                 group_file = vcf_task.group_file
             vcfs[interval] = (vcf_file, group_file)
             if args.local_test:
@@ -219,15 +230,16 @@ def main(args):
             chromosome = f'chr{chrom}'
             chrom_length = chrom_lengths[chromosome]
             for start_pos in range(1, chrom_length, chunk_size):
-                interval = get_interval(chrom_length, chromosome, chunk_size, start_pos)
+                interval, _ = get_intervals(chrom_length, chromosome, chunk_size, start_pos)
+                if interval not in vcfs: continue
                 vcf_file, group_file = vcfs[interval]
                 results_path = get_results_prefix(pheno_results_dir, pheno_key_dict, chromosome, start_pos)
-                if overwrite_results or f'{results_path}.{analysis_type}.txt' not in results_already_created:
+                if overwrite_results or f'{results_path}.{args.add_suffix}{analysis_type}.txt' not in results_already_created:
                     samples_file = p.read_input(get_ukb_samples_file_path())
                     saige_task = run_saige(p, results_path, model_file, variance_ratio_file, vcf_file, samples_file,
                                            SAIGE_DOCKER_IMAGE, group_file=group_file,
                                            sparse_sigma_file=sparse_sigma_file, trait_type=pheno_key_dict['trait_type'], use_bgen=use_bgen,
-                                           chrom=chromosome)
+                                           chrom=chromosome, max_maf=0.999, add_suffix=args.add_suffix, min_maf=0.04)
                     saige_task.attributes.update(copy.deepcopy(pheno_key_dict))
                     saige_tasks.append(saige_task)
                 if args.local_test:
@@ -250,10 +262,11 @@ def main(args):
                                                gene_map_path=get_ukb_gene_map_ht_path(post_processed=False),
                                                n_threads=n_threads, null_glmm_log=null_glmm_root)
             res_tasks.append(load_task)
-            qq_export, qq_plot = qq_plot_results(p, pheno_results_dir, res_tasks, HAIL_DOCKER_IMAGE, QQ_DOCKER_IMAGE,
-                                                 n_threads=n_threads)
-            qq_export.attributes.update(copy.deepcopy(pheno_key_dict))
-            qq_plot.attributes.update(copy.deepcopy(pheno_key_dict))
+            if not args.skip_qq:
+                qq_export, qq_plot = qq_plot_results(p, pheno_results_dir, res_tasks, HAIL_DOCKER_IMAGE, QQ_DOCKER_IMAGE,
+                                                     n_threads=n_threads)
+                qq_export.attributes.update(copy.deepcopy(pheno_key_dict))
+                qq_plot.attributes.update(copy.deepcopy(pheno_key_dict))
 
         if args.limit and n_jobs >= args.limit:
             break
@@ -265,10 +278,24 @@ def main(args):
     logger.info(f'Finished: {get_tasks_from_pipeline(p)}')
 
 
-def get_interval(chrom_length, chromosome, chunk_size, start_pos):
-    padded_chunk_size = chunk_size
+def get_vcf_file(p, use_bgen, vcf_root):
+    if use_bgen:
+        vcf_file = p.read_input_group(**{'bgen': f'{vcf_root}.bgen',
+                                         'bgen.bgi': f'{vcf_root}.bgen.bgi',
+                                         'sample': f'{vcf_root}.sample'})
+    else:
+        vcf_file = p.read_input_group(**{'vcf.gz': f'{vcf_root}.vcf.gz',
+                                         'vcf.gz.tbi': f'{vcf_root}.vcf.gz.tbi'})
+    return vcf_file
+
+
+def get_intervals(chrom_length, chromosome, chunk_size, start_pos):
+    end_pos = chrom_length if start_pos + chunk_size > chrom_length else (start_pos + chunk_size)
+    short_interval = f'{chromosome}:{start_pos}-{end_pos}'
+    padded_chunk_size = chunk_size * 3
     end_pos = chrom_length if start_pos + padded_chunk_size > chrom_length else (start_pos + padded_chunk_size)
-    return f'{chromosome}:{start_pos}-{end_pos}'
+    long_interval = f'{chromosome}:{start_pos}-{end_pos}'
+    return short_interval, long_interval
 
 
 if __name__ == '__main__':
@@ -280,12 +307,18 @@ if __name__ == '__main__':
     parser.add_argument('--skip_saige', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_null_models', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--create_vcfs', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--skip_vcfs', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_results', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--overwrite_hail_results', help='Run single variant SAIGE', action='store_true')
+    parser.add_argument('--skip_qq', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--single_variant_only', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--local_test', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--use_bgen', help='Run single variant SAIGE', action='store_true')
     parser.add_argument('--limit', help='Run single variant SAIGE', type=int)
+    parser.add_argument('--phenos', help='Comma-separated list of trait_type-phenocode-pheno_sex-coding-modifier regexes '
+                                         '(e.g. continuous-50-both_sexes--,icd10-E1.*,brain_mri-.* )')
+    parser.add_argument('--add_suffix', default='')
+    parser.add_argument('--min_cases', help='Dry run only', type=int)
     parser.add_argument('--run_all_phenos', help='Dry run only', action='store_true')
     parser.add_argument('--dry_run', help='Dry run only', action='store_true')
     parser.add_argument('--send_slack', help='Dry run only', action='store_true')
