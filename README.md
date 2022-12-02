@@ -37,9 +37,9 @@ var_mt = hl.read_matrix_table(get_results_mt_path(result_type='variant'))
 To read the full MatrixTables with QC information annotated:
 ```
 ## Gene-level results
-gene_mt = hl.read_matrix_table(load_final_sumstats_table(result_type='gene', extension="mt"))
+gene_mt = load_final_sumstats_table(result_type='gene', extension="mt")
 ## Variant-level results
-var_mt = hl.read_matrix_table(load_final_sumstats_table(result_type='variant', extension="mt"))
+var_mt = load_final_sumstats_table(result_type='variant', extension="mt")
 ```
 
 To get the final QCed MatrixTables (Note that we have two options for `test_type`: `skato` and `burden`, which indicates which test the lambda GC used here were computed from):
